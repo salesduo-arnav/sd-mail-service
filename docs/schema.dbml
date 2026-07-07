@@ -1,0 +1,169 @@
+// sd-mail-service — database schema
+// Paste into https://dbdiagram.io to render the ERD.
+
+Project sd_mail_service {
+  database_type: 'PostgreSQL'
+  Note: 'Standalone multi-product notification service'
+}
+
+Enum channel { email slack in_app sms }
+Enum run_status { active canceled completed failed }
+Enum message_status { queued sent delivered bounced complained failed suppressed }
+Enum step_type { send delay cancel_on repeat }
+Enum pref_status { subscribed unsubscribed }
+Enum suppression_reason { hard_bounce complaint unsubscribe manual }
+
+Table products {
+  id uuid [pk]
+  slug varchar [unique, not null]
+  name varchar [not null]
+  brand_name varchar
+  brand_color varchar
+  logo_url varchar
+  from_email varchar [not null]
+  reply_to_email varchar
+  layout_html text
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table api_keys {
+  id uuid [pk]
+  product_id uuid [ref: > products.id, not null]
+  name varchar
+  key_hash varchar [not null]
+  last_used_at timestamp
+  revoked_at timestamp
+  created_at timestamp
+}
+
+Table subscribers {
+  id uuid [pk]
+  product_id uuid [ref: > products.id, not null]
+  external_id varchar [not null]
+  email varchar
+  name varchar
+  attributes jsonb
+  timezone varchar
+  last_seen_at timestamp
+  created_at timestamp
+  updated_at timestamp
+  Indexes { (product_id, external_id) [unique] }
+}
+
+Table subscriber_preferences {
+  id uuid [pk]
+  subscriber_id uuid [ref: > subscribers.id, not null]
+  category varchar [not null]
+  channel channel [not null]
+  status pref_status [not null, default: 'subscribed']
+  updated_at timestamp
+  Indexes { (subscriber_id, category, channel) [unique] }
+}
+
+Table event_log {
+  id uuid [pk]
+  product_id uuid [ref: > products.id, not null]
+  event_key varchar [not null]
+  idempotency_key varchar [not null]
+  subscriber_id uuid [ref: > subscribers.id]
+  occurred_at timestamp
+  received_at timestamp
+  data jsonb
+  Indexes { (product_id, idempotency_key) [unique] }
+}
+
+Table workflows {
+  id uuid [pk]
+  product_id uuid [ref: > products.id, not null]
+  key varchar [not null]
+  name varchar [not null]
+  trigger_event_key varchar [not null]
+  category varchar [not null]
+  audience varchar [not null]
+  active_version_id uuid
+  enabled boolean [default: true]
+  created_at timestamp
+  updated_at timestamp
+  Indexes { (product_id, key) [unique] }
+}
+
+Table workflow_versions {
+  id uuid [pk]
+  workflow_id uuid [ref: > workflows.id, not null]
+  version int [not null]
+  steps jsonb [not null]
+  created_by uuid [ref: > admin_users.id]
+  created_at timestamp
+  Indexes { (workflow_id, version) [unique] }
+}
+
+Table templates {
+  id uuid [pk]
+  product_id uuid [ref: > products.id, not null]
+  key varchar [not null]                    // referenced by a send step's "template"
+  workflow_id uuid [ref: > workflows.id]
+  channel channel [not null, default: 'email']
+  subject text
+  body text
+  cta jsonb
+  variables jsonb
+  updated_at timestamp
+  Indexes { (product_id, key) [unique] }
+}
+
+Table workflow_runs {
+  id uuid [pk]
+  workflow_id uuid [ref: > workflows.id, not null]
+  workflow_version_id uuid [ref: > workflow_versions.id]
+  subscriber_id uuid [ref: > subscribers.id, not null]
+  trigger_event_id uuid [ref: > event_log.id]
+  status run_status [not null, default: 'active']
+  cancel_on jsonb
+  created_at timestamp
+  completed_at timestamp
+  Indexes { (workflow_id, subscriber_id, status) }
+}
+
+Table run_steps {
+  id uuid [pk]
+  run_id uuid [ref: > workflow_runs.id, not null]
+  step_index int [not null]
+  step_type step_type [not null]
+  scheduled_for timestamp
+  job_id varchar
+  executed_at timestamp
+  Indexes { (run_id, step_index) [unique] }
+}
+
+Table messages {
+  id uuid [pk]
+  product_id uuid [ref: > products.id, not null]
+  subscriber_id uuid [ref: > subscribers.id, not null]
+  run_id uuid [ref: > workflow_runs.id]
+  template_id uuid [ref: > templates.id]
+  channel channel [not null]
+  provider_message_id varchar
+  status message_status [not null, default: 'queued']
+  error text
+  sent_at timestamp
+  created_at timestamp
+  Indexes { (subscriber_id, created_at) }
+}
+
+Table suppressions {
+  id uuid [pk]
+  product_id uuid [ref: > products.id]
+  email varchar [not null]
+  reason suppression_reason [not null]
+  created_at timestamp
+  Indexes { (product_id, email) [unique] }
+}
+
+// Superadmins — full access to all products. No RBAC/roles (single admin type).
+Table admin_users {
+  id uuid [pk]
+  email varchar [unique, not null]
+  name varchar
+  created_at timestamp
+}

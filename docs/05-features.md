@@ -1,0 +1,109 @@
+# 05 — Feature Catalog
+
+What sd-mail-service does, grouped by capability. The right-hand column marks **v1** (needed to ship the Creative Studio emails) vs **later**.
+
+## Event ingestion
+
+| Feature | Phase |
+|---------|-------|
+| Single idempotent `POST /v1/events` | v1 |
+| `POST /v1/subscribers` (identify/update) | v1 |
+| `POST /v1/events/activity` (thin last-seen ping) | v1 |
+| Product-scoped API-key auth (+ optional HMAC signature) | v1 |
+| Async, fire-and-forget (202 + queue) | v1 |
+| Event replay from `event_log` | later |
+| Provider inbound webhooks (bounce/complaint) | v1 (email) |
+
+## Subscriber profiles
+
+| Feature | Phase |
+|---------|-------|
+| Per `(product, external_id)` profile | v1 |
+| Arbitrary `attributes` (JSONB) for personalization | v1 |
+| `last_seen_at` tracking | v1 |
+| Per-subscriber timezone (send-time windows) | later |
+
+## Workflows (declarative, admin-editable)
+
+| Feature | Phase |
+|---------|-------|
+| Trigger → ordered steps (`send`/`delay`/`cancel_on`/`repeat`) | v1 |
+| Versioned definitions; in-flight runs pin their version | v1 |
+| Enable/disable per workflow | v1 |
+| Admin-editable delays and conditions (no deploy) | v1 |
+| `delay: until:<data.field>` (absolute-time scheduling) | v1 |
+| Multiple workflows per trigger event | v1 |
+| Branching / multi-step sequences beyond linear | later |
+
+## Scheduling (schedule-and-cancel)
+
+| Feature | Phase |
+|---------|-------|
+| Durable delayed jobs (BullMQ) | v1 |
+| Cancellation via counter-events | v1 |
+| Re-arming recurring timers (inactivity) | v1 |
+| Nightly sweep backstop | v1 |
+
+## Templating & rendering
+
+| Feature | Phase |
+|---------|-------|
+| Liquid variable interpolation + safe light logic | v1 |
+| Per-product branded layout wrapper | v1 |
+| Body HTML + structured CTA blocks (label + link) | v1 |
+| Declared-variable helper in the editor | v1 |
+| Live preview (rendered with sample data) | v1 |
+| Send-test to an admin's email | v1 |
+| MJML-based responsive layouts | later |
+
+## Delivery & channels
+
+| Feature | Phase |
+|---------|-------|
+| Email driver over SMTP / Amazon SES | v1 |
+| Channel-driver abstraction (pluggable) | v1 |
+| Slack / in-app / SMS drivers | later |
+| Per-message delivery status tracking | v1 |
+
+## Preferences & compliance
+
+| Feature | Phase |
+|---------|-------|
+| Per-category, per-channel opt-out | v1 |
+| Unsubscribe link + auto footer on non-transactional mail | v1 |
+| Suppression list (hard bounces, complaints, unsubscribes) | v1 |
+| Transactional vs marketing category distinction | v1 |
+| Preference center page (hosted) | later |
+
+## Admin UI
+
+Single **superadmin** role — full access to every product. No RBAC / per-product admin scoping.
+
+| Feature | Phase |
+|---------|-------|
+| Products: branding, from/reply-to, API keys | v1 |
+| Workflow editor (trigger, steps, delays, enable) | v1 |
+| Template editor (subject, body, CTAs) + preview + send-test | v1 |
+| Subscriber lookup (profile, prefs, message history) | v1 |
+| Message/event logs | v1 |
+| Superadmin auth (full access, no roles) | v1 |
+| Audit trail of admin edits | v1 |
+
+## Reliability & observability
+
+| Feature | Phase |
+|---------|-------|
+| Retries with backoff + dead-letter queue | v1 |
+| Idempotency at ingest/run/send | v1 |
+| Structured logs + metrics (queue depth, send rate, failures) | v1 |
+| OpenAPI spec | v1 |
+| TS SDK + Python SDK | v1 |
+| Event replay tooling | later |
+
+## v1 scope summary
+
+**Ship:** email channel, the 6 Creative Studio workflows (5 initially, abandoned-checkout in Phase 2), admin editing, preferences/unsubscribe, SDKs for core (TS) and studio (Python).
+
+**Explicitly later:** additional channels, migration of existing transactional/share emails onto sd-mail-service templates, hosted preference center, richer branching workflows.
+
+See the phased plan in [13-rollout-phases](13-rollout-phases.md).

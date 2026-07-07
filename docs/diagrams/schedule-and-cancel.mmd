@@ -1,0 +1,17 @@
+sequenceDiagram
+  participant Core as core-platform
+  participant N as sd-mail-service
+  participant J as Delayed job (+1d)
+  Core->>N: creative_studio.trial_started (Jane)
+  N->>N: upsert subscriber, run=active, schedule +1d job, guard=integration.connected
+  alt Jane connects within a day
+    Core->>N: creative_studio.integration.connected (Jane)
+    N->>N: run.status = canceled
+    J-->>N: fires at +1d
+    N-->>N: run not active -> no-op
+  else Still not connected at the deadline
+    J-->>N: fires at +1d
+    N->>N: run active, prefs ok, not suppressed
+    N->>Jane: render + send "Connect your Seller Central"
+    N->>N: run.status = completed
+  end

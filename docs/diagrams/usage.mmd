@@ -1,0 +1,29 @@
+sequenceDiagram
+  actor Admin as Superadmin
+  participant Prod as Product (producer)
+  participant Svc as sd-mail-service
+  actor User as End user (subscriber)
+
+  Note over Admin,Svc: One-time setup (admin UI)
+  Admin->>Svc: Create product + branding (from/reply-to, layout)
+  Svc-->>Admin: Issue product API key (shown once)
+  Admin->>Svc: Author workflow (trigger, delay, cancel_on, send) + template
+
+  Note over Prod,Svc: Runtime — per user event (fire-and-forget)
+  User->>Prod: uses the product (signs up, connects, generates…)
+  Prod->>Svc: POST /v1/events (API key, event_key, subscriber, data)
+  Svc-->>Prod: 202 Accepted
+  Svc->>Svc: upsert subscriber, match workflows, create run, schedule/cancel steps
+
+  Note over Prod,Svc: A later counter-event can defuse a pending nudge
+  User->>Prod: completes the action (e.g. connects integration)
+  Prod->>Svc: POST /v1/events (cancel_on key)
+  Svc->>Svc: cancel matching active runs
+
+  Note over Svc,User: Delivery (at deadline, if run active + prefs allow)
+  Svc->>User: render (Liquid + branded layout) then send email
+  User->>Svc: click CTA / unsubscribe
+  Svc->>Svc: record message, and unsubscribe updates preference + suppression
+
+  Note over Admin,Svc: Anytime — no deploy
+  Admin->>Svc: edit template/timing (new version) + view logs

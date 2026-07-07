@@ -1,0 +1,8 @@
+stateDiagram-v2
+  [*] --> active: trigger event
+  active --> canceled: cancel_on event received
+  active --> completed: final send done
+  active --> failed: unrecoverable send error
+  canceled --> [*]
+  completed --> [*]
+  failed --> [*]

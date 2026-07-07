@@ -1,0 +1,21 @@
+erDiagram
+  products ||--o{ api_keys : has
+  products ||--o{ subscribers : has
+  products ||--o{ event_log : receives
+  products ||--o{ workflows : defines
+  products ||--o{ templates : owns
+  products ||--o{ messages : sends
+  products ||--o{ suppressions : maintains
+  subscribers ||--o{ subscriber_preferences : has
+  subscribers ||--o{ event_log : referenced_by
+  subscribers ||--o{ workflow_runs : triggers
+  subscribers ||--o{ messages : receives
+  workflows ||--o{ workflow_versions : versioned_by
+  workflows ||--o{ templates : uses
+  workflows ||--o{ workflow_runs : instantiated_as
+  workflow_versions ||--o{ workflow_runs : pinned_by
+  workflow_runs ||--o{ run_steps : schedules
+  workflow_runs ||--o{ messages : produces
+  templates ||--o{ messages : rendered_into
+  event_log ||--o{ workflow_runs : starts
+  admin_users ||--o{ workflow_versions : authored

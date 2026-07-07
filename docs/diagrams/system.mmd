@@ -1,0 +1,24 @@
+flowchart LR
+  subgraph Producers
+    CP[core-platform]
+    ST[studio / optimizer]
+    ER[early-reviews]
+    AF[affiliates]
+  end
+  CP & ST & ER & AF -->|POST /v1/events\nproduct API key| API[Ingest API]
+  API -->|dedup + persist| EL[(event_log)]
+  API -->|enqueue| Q[[BullMQ: event queue]]
+  Q --> WE[Workflow Engine]
+  WE -->|upsert| SUB[(subscribers)]
+  WE -->|match trigger| WF[(workflows)]
+  WE -->|create| RUN[(workflow_runs)]
+  WE -->|schedule delay steps| SCH[[BullMQ: delayed jobs]]
+  SCH -->|at deadline| FIRE{run active?\nprefs allow?\nnot suppressed?}
+  FIRE -->|yes| RND[Render: Liquid + layout]
+  FIRE -->|no| DROP[no-op / log]
+  RND --> DRV[Channel driver: Email SMTP/SES]
+  DRV --> MSG[(messages)]
+  ADM[Admin UI] --- AAPI[Admin API]
+  AAPI --- WF
+  AAPI --- SUB
+  AAPI --- MSG
