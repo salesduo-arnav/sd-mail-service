@@ -20,9 +20,11 @@ sd-mail-service does **not** authenticate end users. It trusts that a valid prod
 
 ## Email compliance (CAN-SPAM / GDPR / CASL)
 
-- **Unsubscribe:** every **non-transactional** email carries a one-click unsubscribe link (signed token, scoped to subscriber + category) and a `List-Unsubscribe` header. Clicking records a preference/suppression; enforcement is at **send time**.
-- **Suppression list:** hard bounces, complaints (FBL), and unsubscribes are added to `suppressions`; blocked before non-transactional sends.
-- **Transactional vs marketing:** workflows carry a `category`. Transactional categories (e.g. password reset, if migrated later) may bypass marketing unsubscribe but still respect hard-bounce suppression. Lifecycle nudges (onboarding/reengagement/billing) are treated as marketing → fully unsubscribable.
+- **Two message classes** (`messages.type`, `templates.type`):
+  - **marketing** — lifecycle/nudge mail (workflow-driven). Carries a one-click unsubscribe link (signed token scoped to subscriber + category) + `List-Unsubscribe`; blocked by preference opt-out **and any** suppression (unsubscribe, complaint, hard bounce). Fully unsubscribable.
+  - **transactional** — required/1:1 mail (OTP, password reset, invitation, contact, share). Sent via the synchronous `/v1/messages` API. **Bypasses** preference opt-outs and unsubscribe/complaint suppression — a user must never lose access to required mail by unsubscribing or marking a prior email as spam. Blocked **only** by **hard bounce** (the address is undeliverable). **No** unsubscribe footer/`List-Unsubscribe` (a support contact line instead). This is CAN-SPAM-compliant: transactional/relationship messages are exempt from the unsubscribe requirement.
+- **The rule, precisely:** at send time the gate reads `type`. `marketing` → check preferences + all suppression reasons. `transactional` → ignore preferences and the `unsubscribe`/`complaint`/`manual` suppression reasons; honor only `hard_bounce`.
+- **Suppression list:** hard bounces, complaints (FBL), and unsubscribes are added to `suppressions` with a `reason`; the reason is what makes the class-aware gate possible.
 - **Sender identity:** valid `from`/`reply_to`, physical postal address in footer (CAN-SPAM), truthful subject lines. Domain auth: SPF, DKIM, DMARC.
 - **Preferences:** per `(category, channel)` opt-out lets users mute "re-engagement" without losing "billing," etc.
 
@@ -54,3 +56,4 @@ sd-mail-service does **not** authenticate end users. It trusts that a valid prod
 | PII exposure | Encryption, retention limits, GDPR delete |
 | Unsubscribe forgery | Signed, scoped, expiring tokens |
 | Replay of old events | Idempotency keys; `occurred_at` sanity checks |
+| **Required mail unavailable** (login/signup depend on transactional sends — no core SMTP fallback) | Treat the transactional path as **availability-critical**: HA API replicas, fast in-request timeout + limited retries, provider (SES) redundancy, health checks + paging. See [ADR-0006](adr/0006-transactional-and-migration.md) and [12](12-observability-and-ops.md). |

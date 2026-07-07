@@ -1,0 +1,21 @@
+sequenceDiagram
+  actor User as End user
+  participant Core as Product (e.g. core-platform)
+  participant Svc as sd-mail-service
+  participant SES as Email provider (SES)
+
+  User->>Core: request login OTP
+  Core->>Core: generate + store OTP
+  Core->>Svc: POST /v1/messages (template_key=login_otp, to.email, data.otp)
+  Svc->>Svc: load transactional template, render (Liquid + layout, no unsub footer)
+  Svc->>Svc: suppression check — HARD BOUNCE only (ignore opt-out/unsubscribe/complaint)
+  alt address hard-bounced
+    Svc-->>Core: 4xx failed (undeliverable)
+    Core-->>User: "couldn't send code, try again"
+  else deliverable
+    Svc->>SES: send
+    SES-->>Svc: accepted (provider_message_id)
+    Svc->>Svc: log message (type=transactional, to_email, status=sent)
+    Svc-->>Core: 200 { status: sent, provider_message_id }
+    Core-->>User: "code sent"
+  end

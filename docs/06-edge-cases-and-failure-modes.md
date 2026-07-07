@@ -47,9 +47,20 @@ Every non-obvious case, with the intended handling. Grouped by area.
 | Case | Handling |
 |------|----------|
 | **Subscriber opts out during a delay window** | Checked at **send time**, not schedule time → the queued nudge is suppressed. |
-| **Hard bounce / complaint** | Provider webhook adds the email to `suppressions`; future non-transactional sends are blocked. |
+| **Hard bounce / complaint** | Provider webhook adds a `suppressions` row with the reason. `hard_bounce` blocks **both** classes (undeliverable); `complaint`/`unsubscribe` block **marketing only** (transactional ignores them). One row per `(email, reason)` so reasons coexist. |
 | **Unsubscribe click** | Signed token → add suppression / flip preference; subsequent sends in that category suppressed. |
-| **Transactional email to a suppressed address** | Transactional categories may bypass marketing suppression (documented policy) but still respect hard-bounce suppression. |
+| **Transactional email to an unsubscribed / opted-out / complained address** | **Still delivered.** Transactional (`type=transactional`) ignores preferences and the `unsubscribe`/`complaint` suppression reasons — a user can't lose their OTP by unsubscribing or once marking a code as spam. |
+
+## Transactional / required mail
+
+| Case | Handling |
+|------|----------|
+| **Transactional to a hard-bounced address** | **Blocked** (undeliverable). The synchronous `/v1/messages` call returns a failure the caller can surface ("we couldn't reach that address"). |
+| **Signup OTP — no account/subscriber yet** | Send to a **raw email** via `/v1/messages` (omit `external_id`); the `message` is logged with `to_email` and `subscriber_id` null. No premature profile created; when they later sign up, their real subscriber is created normally. |
+| **sd-mail-service unavailable when core needs an OTP** | Login/signup are blocked (full dependency, no core SMTP fallback). Mitigation: HA + fast timeout + limited in-request retries + alerting; the caller shows "couldn't send code, try again." See [ADR-0006](adr/0006-transactional-and-migration.md). |
+| **Duplicate transactional send (retry)** | Optional `idempotency_key` on `/v1/messages` dedups, so a retried request doesn't send two OTPs. |
+| **Invitation email fails** | Core currently rolls the invite back if the mail fails; with the synchronous API it fails the invite creation on a non-`sent` result — same guarantee, now via sd-mail-service. |
+| **Wrong class on a template** (e.g. a nudge marked transactional) | Admin-set `type` is authoritative; a marketing nudge marked transactional would skip the unsubscribe footer — caught in review/send-test. Keep required-only templates transactional. |
 
 ## Delivery & infrastructure
 

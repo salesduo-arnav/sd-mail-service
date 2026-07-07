@@ -12,6 +12,7 @@ Enum message_status { queued sent delivered bounced complained failed suppressed
 Enum step_type { send delay cancel_on repeat }
 Enum pref_status { subscribed unsubscribed }
 Enum suppression_reason { hard_bounce complaint unsubscribe manual }
+Enum message_type { transactional marketing }   // transactional = required mail; bypasses opt-out/unsubscribe (see 11-security)
 
 Table products {
   id uuid [pk]
@@ -102,6 +103,7 @@ Table templates {
   id uuid [pk]
   product_id uuid [ref: > products.id, not null]
   key varchar [not null]                    // referenced by a send step's "template"
+  type message_type [not null, default: 'marketing']  // transactional templates have workflow_id null
   workflow_id uuid [ref: > workflows.id]
   channel channel [not null, default: 'email']
   subject text
@@ -139,7 +141,9 @@ Table run_steps {
 Table messages {
   id uuid [pk]
   product_id uuid [ref: > products.id, not null]
-  subscriber_id uuid [ref: > subscribers.id, not null]
+  type message_type [not null]              // transactional vs marketing (drives suppression/footer)
+  to_email varchar [not null]               // actual recipient; supports raw transactional sends + suppression key
+  subscriber_id uuid [ref: > subscribers.id]  // nullable: transactional sends may have no subscriber (e.g. signup OTP)
   run_id uuid [ref: > workflow_runs.id]
   template_id uuid [ref: > templates.id]
   channel channel [not null]
@@ -157,7 +161,7 @@ Table suppressions {
   email varchar [not null]
   reason suppression_reason [not null]
   created_at timestamp
-  Indexes { (product_id, email) [unique] }
+  Indexes { (product_id, email, reason) [unique] }   // one row per reason so hard_bounce coexists with unsubscribe/complaint
 }
 
 // Superadmins — full access to all products. No RBAC/roles (single admin type).

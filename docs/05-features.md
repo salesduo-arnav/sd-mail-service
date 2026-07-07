@@ -6,11 +6,13 @@ What sd-mail-service does, grouped by capability. The right-hand column marks **
 
 | Feature | Phase |
 |---------|-------|
-| Single idempotent `POST /v1/events` | v1 |
+| Single idempotent `POST /v1/events` (async marketing/lifecycle) | v1 |
+| **Synchronous `POST /v1/messages` (transactional send)** — returns delivery result; targets a raw email or a subscriber | v1 |
+| **Message classes** — `transactional` (required mail, bypasses opt-out/unsubscribe, no footer) vs `marketing` | v1 |
 | `POST /v1/subscribers` (identify/update) | v1 |
 | `POST /v1/events/activity` (thin last-seen ping) | v1 |
 | Product-scoped API-key auth (+ optional HMAC signature) | v1 |
-| Async, fire-and-forget (202 + queue) | v1 |
+| Async, fire-and-forget (202 + queue) for events | v1 |
 | Event replay from `event_log` | later |
 | Provider inbound webhooks (bounce/complaint) | v1 (email) |
 
@@ -69,10 +71,10 @@ What sd-mail-service does, grouped by capability. The right-hand column marks **
 
 | Feature | Phase |
 |---------|-------|
-| Per-category, per-channel opt-out | v1 |
-| Unsubscribe link + auto footer on non-transactional mail | v1 |
+| Per-category, per-channel opt-out (marketing) | v1 |
+| Unsubscribe link + auto footer on marketing mail (omitted for transactional) | v1 |
 | Suppression list (hard bounces, complaints, unsubscribes) | v1 |
-| Transactional vs marketing category distinction | v1 |
+| **Class-aware gate** — transactional bypasses opt-out/unsubscribe/complaint; both honor hard bounce | v1 |
 | Preference center page (hosted) | later |
 
 ## Admin UI
@@ -102,8 +104,10 @@ Single **superadmin** role — full access to every product. No RBAC / per-produ
 
 ## v1 scope summary
 
-**Ship:** email channel, the 6 Creative Studio workflows (5 initially, abandoned-checkout in Phase 2), admin editing, preferences/unsubscribe, SDKs for core (TS) and studio (Python).
+**Ship:** email channel, the 6 Creative Studio workflows (5 initially, abandoned-checkout in Phase 2), the transactional send API, admin editing, preferences/unsubscribe, SDKs for core (TS) and studio (Python).
 
-**Explicitly later:** additional channels, migration of existing transactional/share emails onto sd-mail-service templates, hosted preference center, richer branching workflows.
+**Migration (own phase):** move the platform's existing required/transactional emails (core OTP/reset/invite/contact, studio share/batch, sd-buybox) onto sd-mail-service and retire core's SMTP path — see [13-rollout-phases](13-rollout-phases.md#migration-of-existing-emails).
+
+**Explicitly later:** additional channels, hosted preference center, richer branching workflows.
 
 See the phased plan in [13-rollout-phases](13-rollout-phases.md).

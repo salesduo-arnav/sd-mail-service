@@ -53,6 +53,37 @@ Companion endpoints:
 
 Full API + SDK details: [08-integration-guide](08-integration-guide.md).
 
+## Two ways to send: events (marketing) vs messages (transactional)
+
+There are **two distinct paths**, and they exist because required mail and lifecycle mail have opposite needs:
+
+| | **Events** (`POST /v1/events`) | **Messages** (`POST /v1/messages`) |
+|---|---|---|
+| For | Lifecycle / **marketing** nudges | Required / **transactional** mail (OTP, password reset, invitation, contact, share) |
+| Mode | **Async** — enqueue, `202`, fire-and-forget | **Synchronous** — render + send inline, returns the delivery result |
+| Drives | Workflows (delay / cancel_on / repeat) | Nothing — one immediate send of a named template |
+| Recipient | A subscriber (audience-resolved) | An explicit `to` (may be a **raw email** with no subscriber) |
+| Compliance | Respects preferences + all suppressions; has unsubscribe footer | **Bypasses** opt-outs + unsubscribe/complaint; honors **hard-bounce** only; **no** unsubscribe footer |
+
+### Transactional (synchronous) send
+
+```http
+POST /v1/messages          (auth: product API key)
+{
+  "template_key": "login_otp",
+  "to": { "email": "jane@acme.com", "name": "Jane", "external_id": "user_uuid" },  // external_id optional
+  "data": { "otp": "123456", "expires_minutes": 5 },
+  "idempotency_key": "otp:user_uuid:2026-07-07T10:00:00Z"        // optional; dedups retries
+}
+→ 200 { "message_id": "...", "status": "sent", "provider_message_id": "..." }
+   or 4xx/5xx with an error the caller can surface (e.g. hard-bounced address, render error)
+```
+
+- A message's class = its **template's `type`**. `/v1/messages` requires a `type = transactional` template; workflow `send` steps reference `marketing` templates. The service rejects the mismatch (a transactional template can't be a workflow step, and `/v1/messages` won't send a marketing template). The **audience is the explicit `to`** — no `audience` resolution, no workflow.
+- The caller **awaits** the result, so latency-sensitive flows (login/signup OTP) know immediately whether the mail went out.
+- `external_id` is optional: if present, the send links to (and upserts) that subscriber; if absent (e.g. **signup OTP, no account yet**) the message is logged against `to_email` with `subscriber_id` null.
+- The only gate is the **hard-bounce** suppression list — preferences, unsubscribes, and complaints are ignored so a user can never lose access to required mail. See [11-security-and-compliance](11-security-and-compliance.md).
+
 ## Workflow definition
 
 A workflow is `(trigger_event_key)` → an ordered list of **steps**, stored as JSON in `workflow_versions.steps`:

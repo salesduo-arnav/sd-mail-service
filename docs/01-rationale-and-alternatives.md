@@ -61,7 +61,7 @@ Workflows are **structured data** (trigger → ordered steps of `send`/`delay`/`
 sd-mail-service is deliberately **not**:
 
 - **A CRM / customer data platform.** It stores only what's needed to send and comply. Products remain the system of record.
-- **A batch campaign blaster / newsletter tool.** It is event-driven lifecycle messaging, not "email this segment on Tuesday." (A future admin-triggered broadcast could be layered on, but it's out of scope for v1.)
+- **A batch campaign blaster / newsletter tool.** It is event-driven lifecycle messaging (plus a transactional send API), not "email this segment on Tuesday." (A future admin-triggered broadcast could be layered on, but it's out of scope for v1.)
 - **An analytics warehouse.** It logs deliveries and events for operational purposes; deep product analytics belong elsewhere (e.g. Mixpanel, already in core).
 - **A general workflow/automation engine.** The step vocabulary is intentionally small and messaging-specific.
 - **An identity provider.** It trusts the `external_id` and contact info products send; it does not authenticate end users.

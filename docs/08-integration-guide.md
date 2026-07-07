@@ -123,6 +123,56 @@ await notify.emit(
 
 Model it after the existing `SdInfraClient` / `send_notification_email` style in `app/services/platform_data.py` (async httpx client, swallow-and-log on failure).
 
+### Transactional send (synchronous) — for required mail
+
+For OTP, password reset, invitation, contact, and share invites the caller needs a **result** (the user is waiting, or the flow must roll back on failure). Use `POST /v1/messages` and **await** it — do not fire-and-forget.
+
+```ts
+// core-platform: sending a login OTP (replaces mailService.sendMail + loginOtpEmail)
+const res = await notify.sendTransactional({
+  templateKey: 'login_otp',
+  to: { email: user.email, name: user.full_name, externalId: user.id },
+  data: { otp, expires_minutes: 5 },
+  idempotencyKey: `login_otp:${user.id}:${otpId}`,
+});
+if (res.status !== 'sent') {
+  // surface to the user ("couldn't send code, try again"); do NOT proceed as if sent
+}
+```
+
+```ts
+// signup OTP: no account yet → omit externalId, send to a raw email
+await notify.sendTransactional({ templateKey: 'signup_otp', to: { email }, data: { otp } });
+```
+
+Transactional sends **bypass** preferences + unsubscribe/complaint suppression (a user can't opt out of an OTP); they're blocked only by a prior **hard bounce**, which comes back as a failure the caller can surface. See [04](04-event-and-workflow-model.md#two-ways-to-send-events-marketing-vs-messages-transactional) and [11](11-security-and-compliance.md).
+
+The synchronous transactional flow (source: [`diagrams/transactional-send.mmd`](diagrams/transactional-send.mmd)):
+
+```mermaid
+sequenceDiagram
+  actor User as End user
+  participant Core as Product (e.g. core-platform)
+  participant Svc as sd-mail-service
+  participant SES as Email provider (SES)
+
+  User->>Core: request login OTP
+  Core->>Core: generate + store OTP
+  Core->>Svc: POST /v1/messages (template_key=login_otp, to.email, data.otp)
+  Svc->>Svc: load transactional template, render (Liquid + layout, no unsub footer)
+  Svc->>Svc: suppression check — HARD BOUNCE only (ignore opt-out/unsubscribe/complaint)
+  alt address hard-bounced
+    Svc-->>Core: 4xx failed (undeliverable)
+    Core-->>User: "couldn't send code, try again"
+  else deliverable
+    Svc->>SES: send
+    SES-->>Svc: accepted (provider_message_id)
+    Svc->>Svc: log message (type=transactional, to_email, status=sent)
+    Svc-->>Core: 200 { status: sent, provider_message_id }
+    Core-->>User: "code sent"
+  end
+```
+
 ## 5. Idempotency & retries
 
 - Producer retries with the **same** `idempotency_key` are safe — sd-mail-service dedups at ingest.
@@ -134,7 +184,16 @@ Model it after the existing `SdInfraClient` / `send_notification_email` style in
 - Keep them **stable** — workflows reference them by string.
 - Emit **facts**, not intentions ("integration.connected", not "send nudge"). sd-mail-service decides what to send. This keeps timing/conditions in the service, per [ADR-0002](adr/0002-schedule-and-cancel.md).
 
-## 7. Reference
+## 7. Migrating an existing email
+
+Moving an email that a product sends today onto sd-mail-service is three steps:
+1. **Create the template** in the admin UI under the product (set `type`: `transactional` for required/1:1 mail, `marketing` for lifecycle). Move the subject/body/branding out of the product's code/config.
+2. **Replace the send call** — swap the product's direct SMTP / `sendMail` call for either `sendTransactional(...)` (await the result) or `emit(...)` (fire-and-forget lifecycle).
+3. **Pass dynamic bits as `data`** — links the product builds (reset/invite URLs), codes, names. sd-mail-service needs no knowledge of the product's URLs.
+
+The full cutover plan for the existing SalesDuo emails (core OTP/reset/invite/contact, studio share/batch, sd-buybox) — which template, which class, and which call site — is the migration table in [13-rollout-phases](13-rollout-phases.md#migration-of-existing-emails).
+
+## 8. Reference
 
 - **OpenAPI** spec published by the service (`/openapi.json`) — generate typed clients as needed.
 - Event catalog per product is visible in the admin UI (workflow triggers + cancel keys), so producers know exactly which events matter.

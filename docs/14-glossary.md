@@ -50,13 +50,19 @@
 
 **Channel driver** — the pluggable component that actually sends on a channel (email driver = SMTP/SES).
 
-**Message** — a single delivery record (`messages`): channel, provider id, status lifecycle (`queued → sent → delivered | bounced | complained | failed | suppressed`).
+**Message** — a single delivery record (`messages`): channel, provider id, status lifecycle (`queued → sent → delivered | bounced | complained | failed | suppressed`), and a `type` (transactional/marketing) + `to_email`.
+
+**Transactional message** — required / 1:1 mail (OTP, password reset, invitation, contact, share). Sent via the synchronous `POST /v1/messages` API. **Bypasses** preference opt-outs and unsubscribe/complaint suppression; blocked only by hard bounce; no unsubscribe footer. Can target a raw email with no subscriber.
+
+**Marketing message** — lifecycle/nudge mail produced by workflows (via events). Respects preferences and all suppressions; carries an unsubscribe footer. The default `type`.
+
+**Transactional send API** — `POST /v1/messages`: renders a named template and sends it inline, returning a delivery result (vs the async `POST /v1/events` pipeline). Used for required mail where the caller must know success/failure.
 
 **Preference** — a subscriber's per-`(category, channel)` opt-in/out, checked at send time.
 
 **Category** — a workflow's classification (`onboarding`, `billing`, `reengagement`) used for preference gating and transactional-vs-marketing rules.
 
-**Suppression** — an email blocked from non-transactional sends due to hard bounce, complaint, unsubscribe, or manual action.
+**Suppression** — a `(product, email, reason)` record that blocks sends. `hard_bounce` blocks **both** classes (undeliverable); `complaint`/`unsubscribe`/`manual` block **marketing only** (transactional ignores them). Multiple reasons can coexist for one address.
 
 **Audience** — who a `send` targets: `event_subscriber` (the user on the event) or `org_owner` (resolved from attributes).
 

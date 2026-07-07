@@ -17,8 +17,9 @@
 | Suppressions added (by reason) | List hygiene, sender reputation |
 | Delayed-job scheduling accuracy (fired vs due) | Scheduler health |
 | Send latency (trigger→send for immediate) | UX for welcome emails |
+| **Transactional send success rate + p95 latency** (`/v1/messages`, by product/template) | **Availability-critical** — login/signup depend on it |
 
-Alerts: queue lag over threshold, delivery failure spike, bounce/complaint rate over provider limits, DLQ non-empty, scheduler behind.
+Alerts: queue lag over threshold, delivery failure spike, bounce/complaint rate over provider limits, DLQ non-empty, scheduler behind, and — **paging** — transactional send failure-rate or p95 latency over threshold (a degraded `/v1/messages` blocks logins).
 
 ## Reliability mechanisms
 
@@ -29,7 +30,7 @@ Alerts: queue lag over threshold, delivery failure spike, bounce/complaint rate 
 
 ## Scaling
 
-- Stateless **api** and **worker** processes scale horizontally; BullMQ concurrency caps per worker.
+- Stateless **api** and **worker** processes scale horizontally; BullMQ concurrency caps per worker. Because required mail (OTP/reset) has **no core SMTP fallback** ([ADR-0006](adr/0006-transactional-and-migration.md)), run the **api** (which serves `/v1/messages`) with enough replicas + health checks that a single instance loss never blocks logins; keep the synchronous send's timeout tight with a small retry budget so a slow provider fails fast rather than hanging the caller.
 - **scheduler** is effectively singleton work; use locks (Redis `SET NX EX`, the pattern core already uses) so multiple replicas don't double-fire the nightly sweep.
 - Postgres is the shared state; index hot paths (`event_log` idempotency, `workflow_runs` by subscriber, `messages` by subscriber+date — all in the [schema](03-data-model.md)).
 
@@ -38,6 +39,7 @@ Alerts: queue lag over threshold, delivery failure spike, bounce/complaint rate 
 | Symptom | First checks |
 |---------|--------------|
 | Emails not sending | Worker alive? Queue depth? Provider creds/quota? DLQ? Recent `messages.status=failed` errors? |
+| **OTP/login mail failing (page)** | `api` replicas healthy? `/v1/messages` p95 + failure rate? Provider (SES) status/quota? Is the address on the `hard_bounce` suppression list? This blocks logins — treat as SEV. |
 | Nudges firing that should've canceled | Are producers emitting the cancel event (`integration.connected`, `generation.completed`)? Check `event_log` for the subscriber; check run `status`/`cancel_on`. |
 | Duplicate emails | Check `messages` per `run_step`; verify idempotency keys from producer; check for multiple active runs. |
 | Wrong/blank personalization | Template variable vs event `data`/attributes; check render logs for missing-var warnings. |

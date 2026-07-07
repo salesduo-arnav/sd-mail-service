@@ -9,7 +9,7 @@ erDiagram
   subscribers ||--o{ subscriber_preferences : has
   subscribers ||--o{ event_log : referenced_by
   subscribers ||--o{ workflow_runs : triggers
-  subscribers ||--o{ messages : receives
+  subscribers |o--o{ messages : receives
   workflows ||--o{ workflow_versions : versioned_by
   workflows ||--o{ templates : uses
   workflows ||--o{ workflow_runs : instantiated_as

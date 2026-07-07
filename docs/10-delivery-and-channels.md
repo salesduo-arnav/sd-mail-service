@@ -21,9 +21,23 @@ interface ChannelDriver {
   1. Render `subject` + `body` with **LiquidJS** using `{ subscriber, data, first_name, brand_* }`.
   2. Render CTA blocks (label + url) into branded buttons.
   3. Wrap in the product's `layout_html` (header/logo/footer).
-  4. Append the compliance footer + unsubscribe link (non-transactional categories).
-- **Deliverability:** SPF/DKIM/DMARC on sending domains; dedicated/segmented IP or SES configuration set; List-Unsubscribe header.
+  4. Append the compliance footer + unsubscribe link **only for `marketing` messages**. **Transactional** messages get no unsubscribe footer / `List-Unsubscribe` (they're exempt required mail).
+- **Deliverability:** SPF/DKIM/DMARC on sending domains; dedicated/segmented IP or SES configuration set; `List-Unsubscribe` header on marketing mail.
 - **Feedback loop:** SES/provider webhooks → ingest bounces/complaints → `suppressions` (see [11](11-security-and-compliance.md)).
+
+## Message class gates the send (transactional vs marketing)
+
+Both classes share the render pipeline but differ at the **send-time gate**:
+
+| Check | `marketing` (workflow/events) | `transactional` (`/v1/messages`) |
+|-------|-------------------------------|----------------------------------|
+| Preference opt-out | blocks | **ignored** |
+| Suppression: unsubscribe / complaint | blocks | **ignored** |
+| Suppression: hard bounce | blocks | **blocks** (undeliverable) |
+| Unsubscribe footer / `List-Unsubscribe` | added | **omitted** |
+| Send mode | async (queued) | synchronous (result returned) |
+
+So a user who unsubscribed from marketing still receives their OTP, but neither class mails a hard-bounced address. Rules live in [11-security-and-compliance](11-security-and-compliance.md).
 
 ## Rendering pipeline
 
@@ -33,8 +47,10 @@ flowchart LR
   V[subscriber + data + brand] --> R
   R --> C[inject CTA buttons]
   C --> L[wrap in product layout_html]
-  L --> F[+ unsubscribe/compliance footer]
-  F --> D[channel driver → send]
+  L --> G{marketing?}
+  G -->|yes| F[+ unsubscribe/compliance footer]
+  G -->|no / transactional| D[channel driver → send]
+  F --> D
   D --> M[(messages: status)]
 ```
 

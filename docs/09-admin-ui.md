@@ -10,7 +10,7 @@ There is a **single admin type — superadmin** — with full access to every pr
 |---------|----------------|
 | **Products** | Create/edit a product; set branding (name, color, logo), `from_email`, `reply_to_email`, and the branded `layout_html`. Manage API keys (create, name, revoke). |
 | **Workflows** | List per product. Create/edit a workflow: trigger event key, ordered steps (add `delay` with a duration, `cancel_on` with event keys, `send` with a template), category, audience, enable/disable. Everything is data — **no deploy**. |
-| **Templates** | Edit `subject` and `body` (Liquid + HTML), primary/secondary **CTA** blocks (label + link). A variable helper lists the vars the workflow provides. **Live preview** renders with sample data; **Send test** delivers to the admin's own email. |
+| **Templates** | Edit `subject` and `body` (Liquid + HTML), primary/secondary **CTA** blocks (label + link), and the **`type`** — `marketing` (attached to a workflow, gets an unsubscribe footer) or `transactional` (standalone, no workflow, sent via `/v1/messages`, no footer). A variable helper lists available vars (from the workflow for marketing, or the send `data` for transactional). **Live preview** renders with sample data; **Send test** delivers to the admin's own email. |
 | **Subscribers** | Look up a subscriber by `external_id`/email; view attributes, `last_seen_at`, preferences, and message history. Manually suppress/unsuppress. |
 | **Logs & analytics** | Event stream (ingested events), workflow runs (active/canceled/completed), messages (sent/bounced/failed), suppression list. Filter by product/subscriber/date. |
 | **Audit** | Every admin edit (who changed which workflow/template/version, when). |

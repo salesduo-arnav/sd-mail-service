@@ -16,6 +16,7 @@ Enum message_status { queued sent delivered bounced complained failed suppressed
 Enum step_type { send delay cancel_on repeat }
 Enum pref_status { subscribed unsubscribed }
 Enum suppression_reason { hard_bounce complaint unsubscribe manual }
+Enum message_type { transactional marketing }   // transactional = required mail; bypasses opt-out/unsubscribe (see 11-security)
 
 Table products {
   id uuid [pk]
@@ -106,6 +107,7 @@ Table templates {
   id uuid [pk]
   product_id uuid [ref: > products.id, not null]
   key varchar [not null]                    // referenced by a send step's "template"
+  type message_type [not null, default: 'marketing']  // transactional templates have workflow_id null
   workflow_id uuid [ref: > workflows.id]
   channel channel [not null, default: 'email']
   subject text                              // Liquid
@@ -143,7 +145,9 @@ Table run_steps {
 Table messages {
   id uuid [pk]
   product_id uuid [ref: > products.id, not null]
-  subscriber_id uuid [ref: > subscribers.id, not null]
+  type message_type [not null]              // transactional vs marketing (drives suppression/footer)
+  to_email varchar [not null]               // actual recipient; supports raw transactional sends + suppression key
+  subscriber_id uuid [ref: > subscribers.id]  // nullable: transactional sends may have no subscriber (e.g. signup OTP)
   run_id uuid [ref: > workflow_runs.id]
   template_id uuid [ref: > templates.id]
   channel channel [not null]
@@ -161,7 +165,7 @@ Table suppressions {
   email varchar [not null]
   reason suppression_reason [not null]
   created_at timestamp
-  Indexes { (product_id, email) [unique] }
+  Indexes { (product_id, email, reason) [unique] }   // one row per reason so hard_bounce coexists with unsubscribe/complaint
 }
 
 // Superadmins — full access to all products. No RBAC/roles (single admin type).
@@ -187,7 +191,7 @@ erDiagram
   subscribers ||--o{ subscriber_preferences : has
   subscribers ||--o{ event_log : referenced_by
   subscribers ||--o{ workflow_runs : triggers
-  subscribers ||--o{ messages : receives
+  subscribers |o--o{ messages : receives
   workflows ||--o{ workflow_versions : versioned_by
   workflows ||--o{ templates : uses
   workflows ||--o{ workflow_runs : instantiated_as
@@ -204,14 +208,14 @@ erDiagram
 - **products** — one row per consuming platform. Holds branding used by the render layer (`brand_name`, `brand_color`, `logo_url`, `from_email`, `reply_to_email`, `layout_html`). Everything else is scoped by `product_id` → this is the multi-tenant boundary.
 - **api_keys** — product-scoped ingestion credentials. Only the **hash** is stored; the plaintext is shown once at creation. Rotation = create new + `revoked_at` the old. Blast radius of a leak is one product.
 - **subscribers** — the recipient profile, unique per `(product_id, external_id)`. `external_id` is the product's own user id. `attributes` (JSONB) carries anything workflows/templates need (`org_id`, `org_name`, `role`, `plan`). `last_seen_at` powers inactivity workflows. Email/name are upserted from events so producers can send thin payloads.
-- **subscriber_preferences** — per `(category, channel)` opt-in/out. Checked at **send time**, not schedule time. Absence defaults to `subscribed`. Transactional categories can be exempt from unsubscribe (see [11](11-security-and-compliance.md)).
+- **subscriber_preferences** — per `(category, channel)` opt-in/out, applied to **marketing** messages at **send time** (not schedule time). Absence defaults to `subscribed`. **Transactional** messages skip this check entirely — required mail is never gated by preferences (see [11](11-security-and-compliance.md)).
 - **event_log** — append-only record of everything ingested. `(product_id, idempotency_key)` unique = the dedup guarantee. Enables **replay** and audit. `data` holds template variables.
 - **workflows** / **workflow_versions** — a workflow is identified by `(product_id, key)`; its behavior lives in a **versioned** `steps` JSON. `active_version_id` points at the live version. Editing produces a new version; in-flight runs pin the version they started on.
-- **templates** — content for a `send` step: `subject` + `body` (Liquid + HTML, body only — the product `layout_html` wraps it), `cta` blocks (label + url, primary/secondary), and a `variables` manifest that drives the admin editor's helper + validation. Identified by `key`, unique per `(product_id, key)` — this is the string a `send` step's `template` field resolves against (for the step's `channel`).
+- **templates** — content for a `send` step: `subject` + `body` (Liquid + HTML, body only — the product `layout_html` wraps it), `cta` blocks (label + url, primary/secondary), and a `variables` manifest that drives the admin editor's helper + validation. Identified by `key`, unique per `(product_id, key)` — this is the string a `send` step's `template` field resolves against (for the step's `channel`). `type` = `marketing` (workflow-driven, respects preferences/suppression, gets an unsubscribe footer) or `transactional` (required mail sent via the synchronous API, `workflow_id` null, bypasses opt-out/unsubscribe, no footer — see [04](04-event-and-workflow-model.md) and [11](11-security-and-compliance.md)).
 - **workflow_runs** — one execution per `(workflow, subscriber, trigger event)`. `status` drives the state machine ([04](04-event-and-workflow-model.md)); `cancel_on` copies the event keys that defuse it. The `(workflow, subscriber, status)` index supports dedup and cancellation lookups.
 - **run_steps** — materializes each scheduled step so delayed jobs are queryable/auditable (which sends are pending, when). `job_id` links to the BullMQ job for cancellation.
-- **messages** — the delivery log: one per send attempt, with provider id + `status` lifecycle (`queued → sent → delivered | bounced | complained | failed | suppressed`). Powers analytics and idempotency.
-- **suppressions** — hard bounces, complaints, and unsubscribes; checked before every non-transactional send. `(product_id, email)` unique.
+- **messages** — the delivery log: one per send attempt, with provider id + `status` lifecycle (`queued → sent → delivered | bounced | complained | failed | suppressed`). Powers analytics and idempotency. `type` records the class (transactional/marketing) so the send-time gate and the audit trail know which suppression/footer rules applied. `to_email` is the actual recipient address — always recorded (it's the suppression key and lets **transactional** sends target a raw email); `subscriber_id` is therefore **nullable** (a signup-OTP send has no profile yet).
+- **suppressions** — one row per `(product_id, email, reason)` so a single address can carry several reasons at once (e.g. `unsubscribe` **and** `hard_bounce`). The send-time gate is reason-aware: **marketing** is blocked by any reason; **transactional** is blocked **only** by `hard_bounce` (undeliverable), ignoring `unsubscribe`/`complaint`/`manual`. This is what lets an unsubscribed user still receive their OTP while nobody is mailed at a dead address.
 - **admin_users** — the superadmin accounts. All admins have **full access to every product**; there is no RBAC / per-product scoping (single admin type). Referenced by `workflow_versions.created_by` for an edit audit trail. See [09](09-admin-ui.md).
 
 ## Retention & PII

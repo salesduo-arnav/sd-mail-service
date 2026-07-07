@@ -30,10 +30,10 @@ Start at **[00-overview](00-overview.md)** for the one-pager, then **[01-rationa
 ## Import-ready artifacts
 
 - **[schema.dbml](schema.dbml)** — paste directly into [dbdiagram.io](https://dbdiagram.io).
-- **[diagrams/](diagrams/)** — individual `.mmd` files (`system`, `usage`, `schedule-and-cancel`, `run-state-machine`, `er`) for [Mermaid Live](https://mermaid.live). The `usage` diagram (end-to-end actor lifecycle) is also rendered in [08-integration-guide](08-integration-guide.md#usage-at-a-glance).
+- **[diagrams/](diagrams/)** — individual `.mmd` files (`system`, `usage`, `schedule-and-cancel`, `transactional-send`, `run-state-machine`, `er`) for [Mermaid Live](https://mermaid.live). The `usage` diagram (end-to-end actor lifecycle) is also rendered in [08-integration-guide](08-integration-guide.md#usage-at-a-glance).
 
 ## Locked design decisions (at a glance)
 
-Build in-house · own repo · **Node.js + TypeScript** · **schedule-and-cancel** event model · owns email delivery, **multi-channel-ready** · **subscriber profiles** · **declarative admin-editable workflows** · **own admin UI** (single superadmin, no RBAC) · owns **preferences + unsubscribe**.
+Build in-house · own repo · **Node.js + TypeScript** · **schedule-and-cancel** event model · owns email delivery, **multi-channel-ready** · **subscriber profiles** · **declarative admin-editable workflows** · **own admin UI** (single superadmin, no RBAC) · owns **preferences + unsubscribe** · **single email egress incl. transactional** (OTP/reset/invite via a synchronous API, exempt from unsubscribe).
 
 Each of these has a dedicated [ADR](adr/).

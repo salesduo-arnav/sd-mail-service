@@ -6,7 +6,8 @@ sd-mail-service is one codebase deployed as a few process types, backed by Postg
 
 | Component | Responsibility |
 |-----------|----------------|
-| **Ingest API** | `POST /v1/events`, `/v1/subscribers`, `/v1/events/activity`, provider webhooks. Authenticates product API keys, validates, deduplicates (idempotency), persists to `event_log`, enqueues. Returns fast (202). |
+| **Ingest API** | `POST /v1/events` (async, returns 202), `/v1/subscribers`, `/v1/events/activity`, provider webhooks. Authenticates product API keys, validates, deduplicates (idempotency), persists to `event_log`, enqueues. |
+| **Transactional API** | `POST /v1/messages` — **synchronous** required-mail send: renders a transactional template and delivers inline, returning a delivery result (not 202). Bypasses opt-out/unsubscribe; honors hard bounce. Availability-critical (login/signup depend on it). |
 | **Admin API** | CRUD for products, workflows, templates, subscribers, logs. Auth via superadmin sessions (single admin type, full access — no RBAC). |
 | **Workflow engine** (worker) | Consumes the event queue: upserts the subscriber, matches workflows by trigger key, creates `workflow_runs`, executes steps, schedules delayed steps, processes cancellations. |
 | **Scheduler** | BullMQ delayed/repeatable jobs. Fires delayed steps at their deadline; runs the nightly inactivity sweep. |

@@ -31,7 +31,7 @@ Crucially, consumers are **not limited to the micro-tool ecosystem**. Any SalesD
 
 ## What it owns vs what it doesn't
 
-**Owns:** event ingestion, subscriber profiles, workflow definitions, scheduling (delayed + recurring), template rendering, email delivery, preferences/unsubscribe, suppression, delivery logs, the admin UI.
+**Owns:** event ingestion, subscriber profiles, workflow definitions, scheduling (delayed + recurring), template rendering, email delivery, preferences/unsubscribe, suppression, delivery logs, the admin UI. It is also the **single email egress** for the platform — including required/**transactional** mail (OTP, password reset, invitation), sent via a synchronous API and exempt from unsubscribe so opting out never blocks a login code. See [04](04-event-and-workflow-model.md) and [13](13-rollout-phases.md).
 
 **Does not own / know:** any product's database, business logic, billing state, or user model. It only knows what products **tell it** via events, plus the subscriber profile it builds up from those events.
 
