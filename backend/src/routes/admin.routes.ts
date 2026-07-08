@@ -45,6 +45,12 @@ import {
     metrics,
 } from '../controllers/admin/logs.controller';
 import { eventCatalog, categoryCatalog } from '../controllers/admin/catalog.controller';
+import {
+    listCampaigns,
+    getCampaign,
+    createCampaign,
+    audienceCount,
+} from '../controllers/admin/campaigns.controller';
 
 const router = Router();
 
@@ -93,6 +99,12 @@ router.get('/logs/runs/:id', getRun);
 router.get('/logs/messages', listMessages);
 router.get('/logs/suppressions', listSuppressions);
 router.get('/metrics', metrics);
+
+// Marketing campaigns
+router.get('/campaigns', listCampaigns);
+router.post('/campaigns', createCampaign);
+router.get('/campaigns/audience-count', audienceCount);
+router.get('/campaigns/:id', getCampaign);
 
 // Catalogs for the workflow builder pickers
 router.get('/events/catalog', eventCatalog);

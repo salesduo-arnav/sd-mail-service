@@ -2,7 +2,7 @@ import { Message } from '../../models/message';
 import { Product } from '../../models/product';
 import { Subscriber } from '../../models/subscriber';
 import { Template } from '../../models/template';
-import { MessageStatus } from '../../types/workflow';
+import { MessageStatus, MessageType, TemplateCtaJson } from '../../types/workflow';
 import { renderEmail } from '../render/layout';
 import { emailDriver } from './email-driver';
 import { checkSuppression } from '../suppression.service';
@@ -10,9 +10,18 @@ import { isOptedOut } from '../preference.service';
 import { unsubscribeUrl } from '../unsubscribe-token';
 import Logger from '../../utils/logger';
 
-export interface SendTemplateInput {
+/** The renderable content of a message — from a saved template or composed inline. */
+export interface MessageContent {
+    type: MessageType;
+    subject: string | null;
+    body: string | null;
+    cta: TemplateCtaJson | null;
+    templateId?: string | null;
+}
+
+export interface DeliverInput {
     product: Product;
-    template: Template;
+    content: MessageContent;
     toEmail: string | null;
     subscriber?: Subscriber | null;
     /** Recipient display name when there is no subscriber (raw transactional sends). */
@@ -22,6 +31,7 @@ export interface SendTemplateInput {
     category?: string | null;
     runId?: string | null;
     runStepId?: string | null;
+    campaignId?: string | null;
 }
 
 export interface SendResult {
@@ -34,52 +44,51 @@ export interface SendResult {
 
 /**
  * Render + gate + send one message, logging a `messages` row. Shared by the
- * transactional API (sync) and the workflow engine (immediate/delayed).
+ * transactional API, the workflow engine, and marketing campaigns.
  *
  * Class-aware: transactional bypasses preferences + unsubscribe/complaint (blocked
  * only by hard_bounce, no footer); marketing honors preferences + all suppressions
- * and carries an unsubscribe footer. One message per run_step (idempotent redelivery).
+ * and carries an unsubscribe footer.
  *
- * Throws only on transient provider errors (so the enclosing job retries); terminal
- * outcomes (suppressed, hard-bounce, no-recipient) return a result with delivered=false.
+ * Idempotent per run_step (engine) or per (campaign, subscriber) (campaigns), so a
+ * retried job never sends twice. Throws only on transient provider errors (enclosing
+ * job retries); terminal outcomes return delivered=false.
  */
-export async function sendTemplate(input: SendTemplateInput): Promise<SendResult> {
-    const { product, template, subscriber, runId, runStepId } = input;
-    const type = template.type;
+export async function deliver(input: DeliverInput): Promise<SendResult> {
+    const { product, content, subscriber, runId, runStepId, campaignId } = input;
+    const type = content.type;
     const toEmail = input.toEmail ?? subscriber?.email ?? null;
 
-    // Idempotency: at most one message per run_step.
+    const baseDefaults = {
+        product_id: product.id,
+        type,
+        to_email: toEmail ?? '',
+        subscriber_id: subscriber?.id ?? null,
+        run_id: runId ?? null,
+        run_step_id: runStepId ?? null,
+        campaign_id: campaignId ?? null,
+        template_id: content.templateId ?? null,
+        channel: 'email' as const,
+        status: 'queued' as MessageStatus,
+    };
+
+    // Idempotency anchor: one message per run_step, or per (campaign, subscriber).
     let message: Message;
     if (runStepId) {
+        const [m, created] = await Message.findOrCreate({ where: { run_step_id: runStepId }, defaults: baseDefaults });
+        message = m;
+        if (!created && m.status === 'sent')
+            return { messageId: m.id, status: 'sent', delivered: true, providerMessageId: m.provider_message_id ?? undefined };
+    } else if (campaignId && subscriber) {
         const [m, created] = await Message.findOrCreate({
-            where: { run_step_id: runStepId },
-            defaults: {
-                product_id: product.id,
-                type,
-                to_email: toEmail ?? '',
-                subscriber_id: subscriber?.id ?? null,
-                run_id: runId ?? null,
-                run_step_id: runStepId,
-                template_id: template.id,
-                channel: 'email',
-                status: 'queued',
-            },
+            where: { campaign_id: campaignId, subscriber_id: subscriber.id },
+            defaults: baseDefaults,
         });
         message = m;
-        if (!created && m.status === 'sent') {
-            return { messageId: m.id, status: 'sent', delivered: true, providerMessageId: m.provider_message_id ?? undefined };
-        }
+        if (!created && (m.status === 'sent' || m.status === 'suppressed'))
+            return { messageId: m.id, status: m.status, delivered: m.status === 'sent', providerMessageId: m.provider_message_id ?? undefined };
     } else {
-        message = await Message.create({
-            product_id: product.id,
-            type,
-            to_email: toEmail ?? '',
-            subscriber_id: subscriber?.id ?? null,
-            run_id: runId ?? null,
-            template_id: template.id,
-            channel: 'email',
-            status: 'queued',
-        });
+        message = await Message.create(baseDefaults);
     }
 
     const finalize = async (status: MessageStatus, patch: Partial<Message> = {}) => {
@@ -115,9 +124,9 @@ export async function sendTemplate(input: SendTemplateInput): Promise<SendResult
             : null;
 
     const rendered = await renderEmail({
-        subject: template.subject ?? '',
-        body: template.body ?? '',
-        cta: template.cta,
+        subject: content.subject ?? '',
+        body: content.body ?? '',
+        cta: content.cta,
         subscriber: subscriber
             ? { name: subscriber.name, email: subscriber.email, attributes: subscriber.attributes }
             : { name: input.toName ?? null, email: toEmail },
@@ -145,4 +154,37 @@ export async function sendTemplate(input: SendTemplateInput): Promise<SendResult
         error: null,
     });
     return { messageId: message.id, status: 'sent', delivered: true, providerMessageId: res.providerMessageId };
+}
+
+export interface SendTemplateInput {
+    product: Product;
+    template: Template;
+    toEmail: string | null;
+    subscriber?: Subscriber | null;
+    toName?: string | null;
+    data?: Record<string, unknown>;
+    category?: string | null;
+    runId?: string | null;
+    runStepId?: string | null;
+}
+
+/** Convenience wrapper: deliver a saved Template (used by the engine + transactional API). */
+export async function sendTemplate(input: SendTemplateInput): Promise<SendResult> {
+    return deliver({
+        product: input.product,
+        content: {
+            type: input.template.type,
+            subject: input.template.subject,
+            body: input.template.body,
+            cta: input.template.cta,
+            templateId: input.template.id,
+        },
+        toEmail: input.toEmail,
+        subscriber: input.subscriber,
+        toName: input.toName,
+        data: input.data,
+        category: input.category,
+        runId: input.runId,
+        runStepId: input.runStepId,
+    });
 }

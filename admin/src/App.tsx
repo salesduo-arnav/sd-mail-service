@@ -7,6 +7,7 @@ import Login from '@/pages/Login';
 import Products from '@/pages/Products';
 import Workflows from '@/pages/Workflows';
 import Templates from '@/pages/Templates';
+import Campaigns from '@/pages/Campaigns';
 import Subscribers from '@/pages/Subscribers';
 import Logs from '@/pages/Logs';
 
@@ -52,6 +53,7 @@ export default function App() {
                     <Route path="/products" element={<Products />} />
                     <Route path="/workflows" element={<Workflows />} />
                     <Route path="/templates" element={<Templates />} />
+                    <Route path="/campaigns" element={<Campaigns />} />
                     <Route path="/subscribers" element={<Subscribers />} />
                     <Route path="/logs" element={<Logs />} />
                     <Route path="*" element={<Navigate to="/products" replace />} />

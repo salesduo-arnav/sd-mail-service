@@ -12,10 +12,12 @@ async function main() {
         Logger.info(`api listening on :${env.PORT} (${env.NODE_ENV})`);
     });
 
-    const shutdown = async (signal: string) => {
+    const shutdown = (signal: string) => {
         Logger.info(`${signal} received — shutting down api`);
-        // Force-exit if graceful close hangs on a stuck connection.
-        setTimeout(() => process.exit(1), 10_000).unref();
+        // Force-exit if graceful close hangs; drop idle keep-alive sockets so close()
+        // resolves promptly (snappy Ctrl-C in dev, fast rollout in prod).
+        setTimeout(() => process.exit(1), 3000).unref();
+        server.closeAllConnections?.();
         server.close(async () => {
             await closeDB().catch(() => undefined);
             await closeRedis().catch(() => undefined);

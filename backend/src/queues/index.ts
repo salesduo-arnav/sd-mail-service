@@ -5,6 +5,7 @@ export const QUEUE_EVENT = 'sdmail_events';
 export const QUEUE_DELIVERY = 'sdmail_delivery'; // Phase 2
 export const QUEUE_DELAYED = 'sdmail_delayed'; // Phase 2
 export const QUEUE_MAINTENANCE = 'sdmail_maintenance'; // Phase 2 (nightly sweep)
+export const QUEUE_CAMPAIGN = 'sdmail_campaign'; // marketing campaign fan-out
 
 const defaultJobOptions: JobsOptions = {
     attempts: 5,
@@ -16,6 +17,7 @@ const defaultJobOptions: JobsOptions = {
 let eventQueue: Queue | null = null;
 let delayedQueue: Queue | null = null;
 let maintenanceQueue: Queue | null = null;
+let campaignQueue: Queue | null = null;
 
 export function getEventQueue(): Queue {
     if (!eventQueue) {
@@ -68,8 +70,34 @@ export async function scheduleNightlySweep(cron = '0 3 * * *'): Promise<void> {
     await getMaintenanceQueue().add('nightly-sweep', {}, { repeat: { pattern: cron }, jobId: 'nightly-sweep' });
 }
 
+export function getCampaignQueue(): Queue {
+    if (!campaignQueue) {
+        campaignQueue = new Queue(QUEUE_CAMPAIGN, { connection: bullConnectionOpts(), defaultJobOptions });
+    }
+    return campaignQueue;
+}
+
+export type CampaignJobData =
+    | { kind: 'dispatch'; campaignId: string }
+    | { kind: 'send'; campaignId: string; subscriberId: string };
+
+/** Enqueue a campaign for fan-out (one dispatch job → many per-recipient send jobs). */
+export async function enqueueCampaignDispatch(campaignId: string): Promise<void> {
+    await getCampaignQueue().add('dispatch', { kind: 'dispatch', campaignId }, { jobId: `disp:${campaignId}` });
+}
+
+/** Enqueue a single campaign recipient send (idempotent per campaign+subscriber). */
+export async function enqueueCampaignSend(campaignId: string, subscriberId: string): Promise<void> {
+    await getCampaignQueue().add(
+        'send',
+        { kind: 'send', campaignId, subscriberId },
+        { jobId: `${campaignId}:${subscriberId}` },
+    );
+}
+
 export async function closeQueues(): Promise<void> {
     if (eventQueue) await eventQueue.close();
     if (delayedQueue) await delayedQueue.close();
     if (maintenanceQueue) await maintenanceQueue.close();
+    if (campaignQueue) await campaignQueue.close();
 }

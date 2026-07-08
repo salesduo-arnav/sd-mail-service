@@ -11,6 +11,7 @@ import { WorkflowRun } from './workflow_run';
 import { RunStep } from './run_step';
 import { Message } from './message';
 import { Suppression } from './suppression';
+import { Campaign } from './campaign';
 
 // ---- Associations (the relationship graph) ----
 
@@ -60,6 +61,12 @@ Message.belongsTo(Template, { foreignKey: 'template_id', as: 'template' });
 Product.hasMany(Suppression, { foreignKey: 'product_id', as: 'suppressions' });
 Suppression.belongsTo(Product, { foreignKey: 'product_id', as: 'product' });
 
+Product.hasMany(Campaign, { foreignKey: 'product_id', as: 'campaigns' });
+Campaign.belongsTo(Product, { foreignKey: 'product_id', as: 'product' });
+Campaign.belongsTo(Template, { foreignKey: 'template_id', as: 'template' });
+Campaign.hasMany(Message, { foreignKey: 'campaign_id', as: 'messages' });
+Message.belongsTo(Campaign, { foreignKey: 'campaign_id', as: 'campaign' });
+
 AdminUser.hasMany(WorkflowVersion, { foreignKey: 'created_by', as: 'authoredVersions' });
 
 export {
@@ -76,4 +83,5 @@ export {
     RunStep,
     Message,
     Suppression,
+    Campaign,
 };

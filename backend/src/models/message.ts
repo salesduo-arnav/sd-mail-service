@@ -10,6 +10,7 @@ export class Message extends Model<InferAttributes<Message>, InferCreationAttrib
     declare subscriber_id: string | null;
     declare run_id: string | null;
     declare run_step_id: string | null;
+    declare campaign_id: string | null;
     declare template_id: string | null;
     declare channel: CreationOptional<Channel>;
     declare provider_message_id: string | null;
@@ -28,6 +29,7 @@ Message.init(
         subscriber_id: { type: DataTypes.UUID, allowNull: true },
         run_id: { type: DataTypes.UUID, allowNull: true },
         run_step_id: { type: DataTypes.UUID, allowNull: true },
+        campaign_id: { type: DataTypes.UUID, allowNull: true },
         template_id: { type: DataTypes.UUID, allowNull: true },
         channel: { type: DataTypes.ENUM('email', 'slack', 'in_app', 'sms'), allowNull: false, defaultValue: 'email' },
         provider_message_id: { type: DataTypes.STRING, allowNull: true },

@@ -30,7 +30,7 @@ sd-mail-service uses its own non-overlapping port block so it runs alongside cor
 ```bash
 cp backend/.env.example backend/.env      # keep dev defaults
 docker compose up --build                 # postgres + redis + mailhog + api + worker + scheduler + admin
-docker compose exec api npm run seed      # once: superadmin + demo/creative-studio products + dev keys
+docker compose exec api npm run seed      # once: bootstrap the superadmin (nothing else)
 # Admin  → http://localhost:5180   (login: admin@salesduo.com / admin12345)
 # API    → http://localhost:3100/health
 # Docs   → http://localhost:3100/docs   (rendered OpenAPI / Redoc)
@@ -57,47 +57,37 @@ cd ../admin && npm install && npm run dev   # admin :5180 (proxies /admin → :3
 
 `npm test` runs the Jest suite (uses `PGDATABASE=sd_mail_test`); `npm run lint` lints.
 
-### Seeded credentials & dev keys
+### First login
 
-`npm run seed` creates a default superadmin and two products with deterministic dev API keys (dev only — never use in prod):
+`npm run seed` bootstraps **only** a superadmin (from `ADMIN_EMAIL` / `ADMIN_PASSWORD`, default `admin@salesduo.com` / `admin12345`) — nothing else is seeded. Everything else is created in the admin UI:
 
-| What | Value |
-|------|-------|
-| Superadmin login | `admin@salesduo.com` / `admin12345` (override via `ADMIN_EMAIL` / `ADMIN_PASSWORD`) |
-| `demo` product key | `sdm_demo_dev_key_do_not_use_in_prod` |
-| `creative-studio` product key | `sdm_cs_dev_key_do_not_use_in_prod` |
-
-The `demo` product includes a **3-second delay** workflow (`demo.start` → cancel on `demo.done`) for fast schedule-and-cancel testing.
+1. Log in at **http://localhost:5180**.
+2. **Products** → create a product (branding, from-email) and an **API key** (copy it, or reveal it later).
+3. **Templates** → author an email; **Workflows** → build a lifecycle automation; **Campaigns** → send a marketing blast to subscribers.
+4. Point a producer at the API with that key.
 
 ### Try it (smoke test)
 
-With the api + worker running and Mailhog open at **http://localhost:8026**:
+Create a product + API key in the admin, then (with Mailhog open at **http://localhost:8026**):
 
 ```bash
-# 1) Immediate welcome email (Creative Studio)
-curl -X POST http://localhost:3100/v1/events \
-  -H "Authorization: Bearer sdm_cs_dev_key_do_not_use_in_prod" -H "Content-Type: application/json" \
-  -d '{"event_key":"creative_studio.trial_started","idempotency_key":"t1",
-       "subscriber":{"external_id":"u1","email":"you@example.com","name":"You"},
-       "data":{"trial_ends_at":"2026-07-22T10:00:00Z","start_link":"https://app/start"}}'
+KEY=<your product api key>
 
-# 2) Schedule-and-cancel: fires in ~3s unless canceled first
+# Async event (drives any workflow you built for this event_key)
 curl -X POST http://localhost:3100/v1/events \
-  -H "Authorization: Bearer sdm_demo_dev_key_do_not_use_in_prod" -H "Content-Type: application/json" \
-  -d '{"event_key":"demo.start","idempotency_key":"d1","subscriber":{"external_id":"d1","email":"you@example.com"}}'
-# cancel it (send within 3s, same subscriber) → no email fires
-curl -X POST http://localhost:3100/v1/events \
-  -H "Authorization: Bearer sdm_demo_dev_key_do_not_use_in_prod" -H "Content-Type: application/json" \
-  -d '{"event_key":"demo.done","idempotency_key":"d1-done","subscriber":{"external_id":"d1"}}'
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
+  -d '{"event_key":"app.trial_started","idempotency_key":"t1",
+       "subscriber":{"external_id":"u1","email":"you@example.com","name":"You"}}'
 
-# 3) Synchronous transactional OTP (returns the delivery result)
+# Synchronous transactional send (returns the delivery result). `login_otp` must be a
+# transactional template you created in the admin.
 curl -X POST http://localhost:3100/v1/messages \
-  -H "Authorization: Bearer sdm_cs_dev_key_do_not_use_in_prod" -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
   -d '{"template_key":"login_otp","to":{"email":"you@example.com","name":"You"},
        "data":{"otp":"123456","expires_minutes":5}}'
 ```
 
-More endpoints + language snippets: [`docs/integration/http-examples.md`](docs/integration/http-examples.md) · OpenAPI at `GET /openapi.json`.
+More endpoints + language snippets: [`docs/integration/http-examples.md`](docs/integration/http-examples.md) · OpenAPI at `GET /openapi.json` (rendered at `/docs`).
 
 ### Cleanup
 

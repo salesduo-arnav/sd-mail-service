@@ -17,7 +17,7 @@ async function main() {
 
     const shutdown = async (signal: string) => {
         Logger.info(`${signal} received — shutting down scheduler`);
-        setTimeout(() => process.exit(1), 15_000).unref();
+        setTimeout(() => process.exit(1), 5000).unref();
         await worker.close().catch(() => undefined);
         await closeQueues().catch(() => undefined);
         await closeDB().catch(() => undefined);

@@ -155,6 +155,29 @@ export interface WorkflowRun {
     completed_at: string | null;
 }
 
+export interface CampaignCounts {
+    sent: number;
+    suppressed: number;
+    failed: number;
+    processed: number;
+}
+
+export interface Campaign {
+    id: string;
+    product_id: string;
+    name: string;
+    template_id: string | null;
+    category: string;
+    subject: string | null;
+    body: string | null;
+    cta: TemplateCta | null;
+    status: 'draft' | 'queued' | 'sending' | 'sent' | 'failed';
+    total_recipients: number;
+    created_at: string;
+    completed_at: string | null;
+    counts?: CampaignCounts;
+}
+
 export interface Metrics {
     events: number;
     messages_by_status: Record<string, number>;

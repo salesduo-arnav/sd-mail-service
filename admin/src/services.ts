@@ -12,6 +12,7 @@ import type {
     WorkflowRun,
     RunStep,
     Metrics,
+    Campaign,
     Step,
     TemplateCta,
     MessageType,
@@ -131,4 +132,22 @@ export const logsApi = {
 export const catalogApi = {
     events: (productId: string) => data<string[]>(api.get(`/admin/events/catalog?product_id=${productId}`)),
     categories: (productId: string) => data<string[]>(api.get(`/admin/categories?product_id=${productId}`)),
+};
+
+export interface CampaignInput {
+    product_id: string;
+    name: string;
+    category: string;
+    template_id?: string | null;
+    subject?: string | null;
+    body?: string | null;
+    cta?: TemplateCta | null;
+}
+
+export const campaignsApi = {
+    list: (productId: string) => data<Campaign[]>(api.get(`/admin/campaigns?product_id=${productId}`)),
+    get: (id: string) => data<Campaign>(api.get(`/admin/campaigns/${id}`)),
+    audienceCount: (productId: string) =>
+        data<{ count: number }>(api.get(`/admin/campaigns/audience-count?product_id=${productId}`)),
+    create: (body: CampaignInput) => data<Campaign>(api.post('/admin/campaigns', body)),
 };

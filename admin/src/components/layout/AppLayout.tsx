@@ -1,6 +1,6 @@
 import { ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Mail, Package, Workflow, FileText, Users, ScrollText, LogOut } from 'lucide-react';
+import { Mail, Package, Workflow, FileText, Users, ScrollText, Megaphone, LogOut } from 'lucide-react';
 import { authApi } from '@/services';
 import { useProducts } from '@/contexts/ProductContext';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -11,6 +11,7 @@ const NAV = [
     { to: '/products', label: 'Products', icon: Package },
     { to: '/workflows', label: 'Workflows', icon: Workflow },
     { to: '/templates', label: 'Templates', icon: FileText },
+    { to: '/campaigns', label: 'Campaigns', icon: Megaphone },
     { to: '/subscribers', label: 'Subscribers', icon: Users },
     { to: '/logs', label: 'Logs', icon: ScrollText },
 ];
