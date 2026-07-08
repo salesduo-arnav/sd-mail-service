@@ -8,6 +8,7 @@ import {
     updateProduct,
     deleteProduct,
     createApiKey,
+    revealApiKey,
     revokeApiKey,
 } from '../controllers/admin/products.controller';
 import {
@@ -61,6 +62,7 @@ router.get('/products/:id', getProduct);
 router.patch('/products/:id', updateProduct);
 router.delete('/products/:id', deleteProduct);
 router.post('/products/:id/keys', createApiKey);
+router.get('/products/:id/keys/:keyId/reveal', revealApiKey);
 router.delete('/products/:id/keys/:keyId', revokeApiKey);
 
 router.get('/workflows', listWorkflows);

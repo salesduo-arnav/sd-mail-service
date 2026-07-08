@@ -6,6 +6,7 @@ export class ApiKey extends Model<InferAttributes<ApiKey>, InferCreationAttribut
     declare product_id: string;
     declare name: string | null;
     declare key_hash: string;
+    declare key_encrypted: string | null;
     declare last_used_at: Date | null;
     declare revoked_at: Date | null;
     declare created_at: CreationOptional<Date>;
@@ -17,6 +18,7 @@ ApiKey.init(
         product_id: { type: DataTypes.UUID, allowNull: false },
         name: { type: DataTypes.STRING, allowNull: true },
         key_hash: { type: DataTypes.STRING, allowNull: false },
+        key_encrypted: { type: DataTypes.TEXT, allowNull: true },
         last_used_at: { type: DataTypes.DATE, allowNull: true },
         revoked_at: { type: DataTypes.DATE, allowNull: true },
         created_at: DataTypes.DATE,

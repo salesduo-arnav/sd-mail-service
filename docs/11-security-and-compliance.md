@@ -2,7 +2,7 @@
 
 ## Authentication & authorization
 
-- **Producers** authenticate with a **product-scoped API key** (`Authorization: Bearer` / `X-Api-Key`). Keys are stored **hashed** (`api_keys.key_hash`); plaintext is shown once. Revoke via `revoked_at`. A leaked key's blast radius is a single product.
+- **Producers** authenticate with a **product-scoped API key** (`Authorization: Bearer` / `X-Api-Key`). Auth uses the stored **SHA-256 hash** (`api_keys.key_hash`). For admin convenience an **encrypted-at-rest copy** (`api_keys.key_encrypted`, AES-256-GCM keyed from the app secret) is also stored so a superadmin can reveal/copy the key later; a raw DB dump alone can't read it (needs the running app's secret), and rotating the app secret makes existing copies unrevealable (they still authenticate via the hash). Revoke via `revoked_at`. A leaked key's blast radius is a single product.
 - Optional **HMAC signing** of event bodies (`X-Signature`) for payload integrity.
 - **Admins** are **superadmins** — a single admin type with full access to all products (no RBAC). They authenticate with separate sessions (login or SSO/OIDC); every Admin API call requires a valid superadmin session — see [09](09-admin-ui.md).
 - **Tenancy isolation:** every table is scoped by `product_id`; no cross-product reads. This is enforced in the data-access layer, not just the UI.

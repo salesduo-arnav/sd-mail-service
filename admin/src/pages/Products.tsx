@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, KeyRound, Copy } from 'lucide-react';
+import { Plus, Pencil, Trash2, KeyRound, Copy, Eye } from 'lucide-react';
 import { productsApi } from '@/services';
 import { useProducts } from '@/contexts/ProductContext';
 import type { ApiKeyRow, Product } from '@/types';
@@ -219,6 +219,10 @@ function KeysDialog({ product, onClose }: { product: Product; onClose: () => voi
         await productsApi.revokeKey(product.id, id);
         load();
     };
+    const show = async (id: string) => {
+        const r = await productsApi.revealKey(product.id, id);
+        setReveal(r.api_key);
+    };
 
     return (
         <Dialog open onOpenChange={(o) => !o && onClose()}>
@@ -234,7 +238,10 @@ function KeysDialog({ product, onClose }: { product: Product; onClose: () => voi
                         </Button>
                     </div>
                 )}
-                <p className="text-xs text-muted-foreground">The plaintext key is shown once at creation; only its hash is stored.</p>
+                <p className="text-xs text-muted-foreground">
+                    Keys are shown at creation and can be revealed here (stored encrypted at rest; the hash is used for
+                    auth). Keys created before this feature can't be revealed — rotate them.
+                </p>
                 <Table>
                     <TableHeader>
                         <TableRow>
@@ -253,11 +260,18 @@ function KeysDialog({ product, onClose }: { product: Product; onClose: () => voi
                                     {k.revoked_at ? <Badge variant="secondary">revoked</Badge> : <Badge>active</Badge>}
                                 </TableCell>
                                 <TableCell>
-                                    {!k.revoked_at && (
-                                        <Button size="sm" variant="ghost" className="text-destructive" onClick={() => revoke(k.id)}>
-                                            Revoke
-                                        </Button>
-                                    )}
+                                    <div className="flex justify-end gap-1">
+                                        {k.revealable && !k.revoked_at && (
+                                            <Button size="sm" variant="ghost" onClick={() => show(k.id)}>
+                                                <Eye className="mr-1.5 h-3.5 w-3.5" /> Show
+                                            </Button>
+                                        )}
+                                        {!k.revoked_at && (
+                                            <Button size="sm" variant="ghost" className="text-destructive" onClick={() => revoke(k.id)}>
+                                                Revoke
+                                            </Button>
+                                        )}
+                                    </div>
                                 </TableCell>
                             </TableRow>
                         ))}

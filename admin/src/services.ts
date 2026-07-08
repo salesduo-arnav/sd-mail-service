@@ -38,6 +38,8 @@ export const productsApi = {
     remove: (id: string) => data(api.delete(`/admin/products/${id}`)),
     createKey: (id: string, name: string) =>
         data<{ id: string; name: string; api_key: string }>(api.post(`/admin/products/${id}/keys`, { name })),
+    revealKey: (id: string, keyId: string) =>
+        data<{ id: string; api_key: string }>(api.get(`/admin/products/${id}/keys/${keyId}/reveal`)),
     revokeKey: (id: string, keyId: string) => data(api.delete(`/admin/products/${id}/keys/${keyId}`)),
 };
 
