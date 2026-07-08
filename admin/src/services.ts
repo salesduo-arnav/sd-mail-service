@@ -98,9 +98,19 @@ export const templatesApi = {
         data<{ ok: boolean; to: string }>(api.post(`/admin/templates/${id}/send-test`, { to, data: sampleData })),
 };
 
+export interface SubscriberInput {
+    external_id: string;
+    email?: string | null;
+    name?: string | null;
+    timezone?: string | null;
+    attributes?: Record<string, unknown>;
+}
+
 export const subscribersApi = {
     search: (productId: string, q: string) =>
         data<Subscriber[]>(api.get(`/admin/subscribers?product_id=${productId}&q=${encodeURIComponent(q)}`)),
+    create: (productId: string, body: SubscriberInput) =>
+        data<Subscriber>(api.post(`/admin/subscribers?product_id=${productId}`, body)),
     get: (id: string) =>
         data<{ subscriber: Subscriber; preferences: Preference[]; messages: Message[]; suppressions: Suppression[] }>(
             api.get(`/admin/subscribers/${id}`),
@@ -150,4 +160,5 @@ export const campaignsApi = {
     audienceCount: (productId: string) =>
         data<{ count: number }>(api.get(`/admin/campaigns/audience-count?product_id=${productId}`)),
     create: (body: CampaignInput) => data<Campaign>(api.post('/admin/campaigns', body)),
+    resend: (id: string) => data(api.post(`/admin/campaigns/${id}/resend`)),
 };

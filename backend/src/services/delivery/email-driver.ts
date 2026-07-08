@@ -37,6 +37,11 @@ export class EmailDriver {
                 port: env.SMTP_PORT,
                 secure: env.SMTP_PORT === 465,
                 auth: env.SMTP_USER ? { user: env.SMTP_USER, pass: env.SMTP_PASS } : undefined,
+                // Reuse connections instead of logging in per message — important for
+                // campaigns (bulk) and to avoid provider "too many login attempts" throttling.
+                pool: true,
+                maxConnections: 5,
+                maxMessages: 100,
             });
         }
     }

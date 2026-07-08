@@ -34,11 +34,26 @@ const summarize = (byStatus: Record<string, number> = {}) => {
     return { sent, suppressed, failed, processed };
 };
 
+/** Lazily flip a fully-processed campaign to its terminal status + snapshot counts. */
+async function maybeFinalize(campaign: Campaign, c: ReturnType<typeof summarize>): Promise<void> {
+    if (campaign.status === 'sending' && campaign.total_recipients > 0 && c.processed >= campaign.total_recipients) {
+        const status = c.sent === 0 && c.failed > 0 ? 'failed' : 'sent';
+        await campaign.update({
+            status,
+            completed_at: new Date(),
+            sent_count: c.sent,
+            suppressed_count: c.suppressed,
+            failed_count: c.failed,
+        });
+    }
+}
+
 export const listCampaigns = asyncHandler(async (req: Request, res: Response) => {
     const where: Record<string, unknown> = {};
     if (req.query.product_id) where.product_id = req.query.product_id;
     const campaigns = await Campaign.findAll({ where, order: [['created_at', 'DESC']], limit: 100 });
     const counts = await countsFor(campaigns.map((c) => c.id));
+    for (const c of campaigns) await maybeFinalize(c, summarize(counts[c.id]));
     res.json(campaigns.map((c) => ({ ...c.toJSON(), counts: summarize(counts[c.id]) })));
 });
 
@@ -46,16 +61,7 @@ export const getCampaign = asyncHandler(async (req: Request, res: Response) => {
     const campaign = await Campaign.findByPk(req.params.id);
     if (!campaign) throw notFound('Campaign not found');
     const counts = summarize((await countsFor([campaign.id]))[campaign.id]);
-    // Lazily finalize once every recipient has a terminal message.
-    if (campaign.status === 'sending' && campaign.total_recipients > 0 && counts.processed >= campaign.total_recipients) {
-        await campaign.update({
-            status: 'sent',
-            completed_at: new Date(),
-            sent_count: counts.sent,
-            suppressed_count: counts.suppressed,
-            failed_count: counts.failed,
-        });
-    }
+    await maybeFinalize(campaign, counts);
     res.json({ ...campaign.toJSON(), counts });
 });
 
@@ -115,4 +121,14 @@ export const createCampaign = asyncHandler(async (req: Request, res: Response) =
     });
     await enqueueCampaignDispatch(campaign.id);
     res.status(201).json(campaign);
+});
+
+/** Re-dispatch a campaign (retry not-yet-sent recipients). Idempotent per (campaign,
+ *  subscriber), so already-sent recipients are skipped — useful after fixing SMTP. */
+export const resendCampaign = asyncHandler(async (req: Request, res: Response) => {
+    const campaign = await Campaign.findByPk(req.params.id);
+    if (!campaign) throw notFound('Campaign not found');
+    await campaign.update({ status: 'queued', completed_at: null });
+    await enqueueCampaignDispatch(campaign.id);
+    res.json({ ok: true });
 });

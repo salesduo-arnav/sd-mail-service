@@ -31,6 +31,7 @@ import {
 } from '../controllers/admin/templates.controller';
 import {
     searchSubscribers,
+    createSubscriber,
     getSubscriber,
     suppress,
     unsuppress,
@@ -49,6 +50,7 @@ import {
     listCampaigns,
     getCampaign,
     createCampaign,
+    resendCampaign,
     audienceCount,
 } from '../controllers/admin/campaigns.controller';
 
@@ -88,6 +90,7 @@ router.post('/templates/:id/send-test', sendTestTemplate);
 router.delete('/templates/:id', deleteTemplate);
 
 router.get('/subscribers', searchSubscribers);
+router.post('/subscribers', createSubscriber);
 router.get('/subscribers/:id', getSubscriber);
 router.post('/subscribers/:id/preferences', setSubscriberPreference);
 router.post('/subscribers/suppress', suppress);
@@ -105,6 +108,7 @@ router.get('/campaigns', listCampaigns);
 router.post('/campaigns', createCampaign);
 router.get('/campaigns/audience-count', audienceCount);
 router.get('/campaigns/:id', getCampaign);
+router.post('/campaigns/:id/resend', resendCampaign);
 
 // Catalogs for the workflow builder pickers
 router.get('/events/catalog', eventCatalog);

@@ -11,7 +11,10 @@ export function startCampaignWorker(): Worker {
         async (job) => {
             const d = job.data;
             if (d.kind === 'dispatch') await dispatchCampaign(d.campaignId);
-            else await sendCampaignToSubscriber(d.campaignId, d.subscriberId);
+            else {
+                const finalAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
+                await sendCampaignToSubscriber(d.campaignId, d.subscriberId, finalAttempt);
+            }
         },
         { connection: bullConnectionOpts(), concurrency: 10 },
     );

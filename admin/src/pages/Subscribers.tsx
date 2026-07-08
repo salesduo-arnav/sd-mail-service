@@ -1,17 +1,28 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Search, ShieldX, ShieldCheck } from 'lucide-react';
+import { Search, ShieldX, ShieldCheck, UserPlus } from 'lucide-react';
 import { subscribersApi } from '@/services';
 import { useProducts } from '@/contexts/ProductContext';
 import type { Message, Preference, Subscriber, Suppression, SuppressionReason } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+
+interface AddDraft {
+    external_id: string;
+    email: string;
+    name: string;
+    timezone: string;
+    attributes: string;
+}
+const emptyAdd: AddDraft = { external_id: '', email: '', name: '', timezone: '', attributes: '{}' };
 
 interface Detail {
     subscriber: Subscriber;
@@ -29,9 +40,40 @@ export default function Subscribers() {
     const [rows, setRows] = useState<Subscriber[]>([]);
     const [detail, setDetail] = useState<Detail | null>(null);
     const [suppressReason, setSuppressReason] = useState<SuppressionReason>('manual');
+    const [add, setAdd] = useState<AddDraft | null>(null);
+    const [saving, setSaving] = useState(false);
 
     const search = async () => {
         setRows(await subscribersApi.search(productId, q));
+    };
+
+    const createSubscriber = async () => {
+        if (!add) return;
+        if (!add.external_id) return toast.error('external_id is required');
+        let attributes: Record<string, unknown> = {};
+        if (add.attributes.trim()) {
+            try {
+                attributes = JSON.parse(add.attributes);
+            } catch {
+                return toast.error('Attributes must be valid JSON');
+            }
+        }
+        setSaving(true);
+        try {
+            await subscribersApi.create(productId, {
+                external_id: add.external_id,
+                email: add.email || null,
+                name: add.name || null,
+                timezone: add.timezone || null,
+                attributes,
+            });
+            toast.success('Subscriber added');
+            setAdd(null);
+            setQ(add.external_id);
+            setRows(await subscribersApi.search(productId, add.external_id));
+        } finally {
+            setSaving(false);
+        }
     };
     const open = async (s: Subscriber) => setDetail(await subscribersApi.get(s.id));
     const reload = async () => {
@@ -62,9 +104,14 @@ export default function Subscribers() {
 
     return (
         <div className="space-y-5">
-            <div>
-                <h1 className="text-2xl font-semibold">Subscribers</h1>
-                <p className="text-sm text-muted-foreground">Recipient profiles, preferences, message history, and suppression control.</p>
+            <div className="flex items-center justify-between">
+                <div>
+                    <h1 className="text-2xl font-semibold">Subscribers</h1>
+                    <p className="text-sm text-muted-foreground">Recipient profiles, preferences, message history, and suppression control.</p>
+                </div>
+                <Button onClick={() => setAdd({ ...emptyAdd })} disabled={!productId}>
+                    <UserPlus className="mr-1.5 h-4 w-4" /> Add subscriber
+                </Button>
             </div>
 
             <div className="flex gap-2">
@@ -76,6 +123,43 @@ export default function Subscribers() {
                 />
                 <Button onClick={search}><Search className="mr-1.5 h-4 w-4" /> Search</Button>
             </div>
+
+            <Dialog open={!!add} onOpenChange={(o) => !o && setAdd(null)}>
+                <DialogContent className="max-w-lg">
+                    <DialogHeader><DialogTitle>Add subscriber</DialogTitle></DialogHeader>
+                    {add && (
+                        <div className="space-y-3">
+                            <div className="space-y-1.5">
+                                <Label>External ID (the product's own user id)</Label>
+                                <Input value={add.external_id} onChange={(e) => setAdd({ ...add, external_id: e.target.value })} placeholder="user_123" />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                    <Label>Email</Label>
+                                    <Input value={add.email} onChange={(e) => setAdd({ ...add, email: e.target.value })} placeholder="jane@acme.com" />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label>Name</Label>
+                                    <Input value={add.name} onChange={(e) => setAdd({ ...add, name: e.target.value })} />
+                                </div>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>Timezone (optional)</Label>
+                                <Input value={add.timezone} onChange={(e) => setAdd({ ...add, timezone: e.target.value })} placeholder="America/New_York" />
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label>Attributes (JSON)</Label>
+                                <Textarea className="min-h-[80px] font-mono text-xs" value={add.attributes} onChange={(e) => setAdd({ ...add, attributes: e.target.value })} />
+                            </div>
+                            <p className="text-xs text-muted-foreground">If a subscriber with this external_id already exists, it's updated (upsert).</p>
+                        </div>
+                    )}
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setAdd(null)}>Cancel</Button>
+                        <Button onClick={createSubscriber} disabled={saving}>{saving ? 'Saving…' : 'Add subscriber'}</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <div className="rounded-lg border bg-card">
                 <Table>

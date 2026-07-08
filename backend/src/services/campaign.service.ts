@@ -55,7 +55,11 @@ async function contentFor(campaign: Campaign): Promise<MessageContent | null> {
  * Send one campaign recipient. Marketing gate applies (suppression + preferences +
  * unsubscribe footer). Idempotent per (campaign, subscriber) via deliver().
  */
-export async function sendCampaignToSubscriber(campaignId: string, subscriberId: string): Promise<void> {
+export async function sendCampaignToSubscriber(
+    campaignId: string,
+    subscriberId: string,
+    finalAttempt = false,
+): Promise<void> {
     const campaign = await Campaign.findByPk(campaignId);
     if (!campaign) return;
     const [product, subscriber] = await Promise.all([
@@ -77,5 +81,6 @@ export async function sendCampaignToSubscriber(campaignId: string, subscriberId:
         subscriber,
         category: campaign.category,
         campaignId: campaign.id,
+        finalAttempt,
     });
 }

@@ -8,6 +8,7 @@ import { Message } from '../../models/message';
 import { Suppression } from '../../models/suppression';
 import { addSuppression, removeSuppression } from '../../services/suppression.service';
 import { setPreference } from '../../services/preference.service';
+import { upsertSubscriber } from '../../services/ingest.service';
 
 export const searchSubscribers = asyncHandler(async (req: Request, res: Response) => {
     const q = String(req.query.q ?? '').trim();
@@ -20,6 +21,23 @@ export const searchSubscribers = asyncHandler(async (req: Request, res: Response
     }
     const subscribers = await Subscriber.findAll({ where, order: [['updated_at', 'DESC']], limit: 50 });
     res.json(subscribers);
+});
+
+const createSchema = z.object({
+    external_id: z.string().min(1),
+    email: z.string().email().optional().nullable(),
+    name: z.string().optional().nullable(),
+    timezone: z.string().optional().nullable(),
+    attributes: z.record(z.unknown()).optional(),
+});
+
+/** Manually add (or upsert) a subscriber under a product. */
+export const createSubscriber = asyncHandler(async (req: Request, res: Response) => {
+    if (!req.query.product_id) throw badRequest('product_id query required', 'validation_error');
+    const parsed = createSchema.safeParse(req.body);
+    if (!parsed.success) throw badRequest('Invalid subscriber', 'validation_error', parsed.error.flatten());
+    const sub = await upsertSubscriber(String(req.query.product_id), parsed.data, { bumpLastSeen: false });
+    res.status(201).json(sub);
 });
 
 export const getSubscriber = asyncHandler(async (req: Request, res: Response) => {

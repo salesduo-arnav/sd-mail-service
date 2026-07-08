@@ -32,6 +32,9 @@ export interface DeliverInput {
     runId?: string | null;
     runStepId?: string | null;
     campaignId?: string | null;
+    /** When true, a provider error is recorded as a terminal `failed` message instead of
+     *  thrown for retry (set by the enclosing job on its last attempt). */
+    finalAttempt?: boolean;
 }
 
 export interface SendResult {
@@ -137,15 +140,27 @@ export async function deliver(input: DeliverInput): Promise<SendResult> {
         supportEmail: product.reply_to_email,
     });
 
-    // Deliver. Provider errors bubble up so the enclosing job retries.
-    const res = await emailDriver().send({
-        from: product.from_email,
-        to: toEmail,
-        replyTo: product.reply_to_email ?? undefined,
-        subject: rendered.subject,
-        html: rendered.html,
-        headers: unsub ? { 'List-Unsubscribe': `<${unsub}>` } : undefined,
-    });
+    // Deliver. Provider errors bubble up so the enclosing job retries — except on the
+    // final attempt, where we record a terminal `failed` message so the caller (e.g. a
+    // campaign) can complete instead of hanging on a perpetually-queued row.
+    let res;
+    try {
+        res = await emailDriver().send({
+            from: product.from_email,
+            to: toEmail,
+            replyTo: product.reply_to_email ?? undefined,
+            subject: rendered.subject,
+            html: rendered.html,
+            headers: unsub ? { 'List-Unsubscribe': `<${unsub}>` } : undefined,
+        });
+    } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (input.finalAttempt) {
+            await finalize('failed', { error: msg.slice(0, 500) });
+            return { messageId: message.id, status: 'failed', delivered: false, reason: 'provider_error' };
+        }
+        throw err;
+    }
 
     await finalize('sent', {
         to_email: toEmail,

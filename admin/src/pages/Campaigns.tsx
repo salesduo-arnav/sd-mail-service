@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Send, Plus, RefreshCw } from 'lucide-react';
+import { Send, Plus, RefreshCw, RotateCcw } from 'lucide-react';
 import { campaignsApi, templatesApi } from '@/services';
 import { useProducts } from '@/contexts/ProductContext';
 import type { Campaign, Template, TemplateCta } from '@/types';
@@ -61,6 +61,12 @@ export default function Campaigns() {
         setDraft({ ...draft, cta });
     };
 
+    const resend = async (id: string) => {
+        await campaignsApi.resend(id);
+        toast.success('Re-dispatched (already-sent recipients are skipped)');
+        load();
+    };
+
     const send = async () => {
         if (!draft) return;
         if (!draft.name) return toast.error('Give the campaign a name');
@@ -114,6 +120,7 @@ export default function Campaigns() {
                             <TableHead>Suppressed</TableHead>
                             <TableHead>Failed</TableHead>
                             <TableHead>Created</TableHead>
+                            <TableHead className="w-[1%]" />
                         </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -126,10 +133,17 @@ export default function Campaigns() {
                                 <TableCell className="text-muted-foreground">{c.counts?.suppressed ?? 0}</TableCell>
                                 <TableCell className="text-muted-foreground">{c.counts?.failed ?? 0}</TableCell>
                                 <TableCell className="text-muted-foreground">{c.created_at.slice(0, 19)}</TableCell>
+                                <TableCell>
+                                    {(c.status !== 'sent' || (c.counts?.failed ?? 0) > 0) && (
+                                        <Button variant="ghost" size="sm" onClick={() => resend(c.id)} title="Re-dispatch (retry not-yet-sent)">
+                                            <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Retry
+                                        </Button>
+                                    )}
+                                </TableCell>
                             </TableRow>
                         ))}
                         {campaigns.length === 0 && (
-                            <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">No campaigns yet.</TableCell></TableRow>
+                            <TableRow><TableCell colSpan={8} className="py-8 text-center text-muted-foreground">No campaigns yet.</TableCell></TableRow>
                         )}
                     </TableBody>
                 </Table>

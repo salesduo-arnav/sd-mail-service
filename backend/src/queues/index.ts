@@ -81,18 +81,20 @@ export type CampaignJobData =
     | { kind: 'dispatch'; campaignId: string }
     | { kind: 'send'; campaignId: string; subscriberId: string };
 
+// No fixed jobIds here: idempotency is enforced at the DB level (unique
+// messages.(campaign_id, subscriber_id) + deliver()'s sent/suppressed short-circuit),
+// so a re-dispatch (Retry) must be able to run again — a fixed jobId would be deduped
+// against retained completed/failed jobs and silently no-op.
 /** Enqueue a campaign for fan-out (one dispatch job → many per-recipient send jobs). */
 export async function enqueueCampaignDispatch(campaignId: string): Promise<void> {
-    await getCampaignQueue().add('dispatch', { kind: 'dispatch', campaignId }, { jobId: `disp:${campaignId}` });
+    // attempts:1 — a dispatch failure shouldn't re-enqueue duplicate recipient jobs;
+    // the admin can re-run it via Retry (deliver() skips already-sent recipients).
+    await getCampaignQueue().add('dispatch', { kind: 'dispatch', campaignId }, { attempts: 1 });
 }
 
-/** Enqueue a single campaign recipient send (idempotent per campaign+subscriber). */
+/** Enqueue a single campaign recipient send. Idempotent per (campaign, subscriber) in deliver(). */
 export async function enqueueCampaignSend(campaignId: string, subscriberId: string): Promise<void> {
-    await getCampaignQueue().add(
-        'send',
-        { kind: 'send', campaignId, subscriberId },
-        { jobId: `${campaignId}:${subscriberId}` },
-    );
+    await getCampaignQueue().add('send', { kind: 'send', campaignId, subscriberId });
 }
 
 export async function closeQueues(): Promise<void> {
