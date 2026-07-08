@@ -1,0 +1,42 @@
+# Dev overrides — hot reload from mounted source (ts-node-dev).
+# Compose auto-merges this on top of docker-compose.yml for local runs.
+services:
+  api:
+    build:
+      target: builder
+    # Apply migrations once (api is the migrator), then hot-reload.
+    command: ['sh', '-c', 'npm run migrate:up && npm run dev']
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+
+  worker:
+    build:
+      target: builder
+    command: ['npm', 'run', 'dev:worker']
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+
+  scheduler:
+    build:
+      target: builder
+    command: ['npm', 'run', 'dev:scheduler']
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+
+  # Admin SPA dev server (Vite). Proxies /admin to the api service.
+  admin:
+    image: node:20-alpine
+    working_dir: /app
+    command: ['sh', '-c', 'npm install && npm run dev -- --host']
+    environment:
+      VITE_API_PROXY: http://api:3000
+    volumes:
+      - ./admin:/app
+      - /app/node_modules
+    ports:
+      - '5180:5180'
+    depends_on:
+      - api

@@ -1,0 +1,220 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "sd-mail-service — Producer API",
+    "version": "1.0.0",
+    "description": "Event ingestion (async marketing/lifecycle) and transactional send (sync required mail). Auth with a product API key."
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer"
+      },
+      "apiKey": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Api-Key"
+      }
+    },
+    "schemas": {
+      "Subscriber": {
+        "type": "object",
+        "required": [
+          "external_id"
+        ],
+        "properties": {
+          "external_id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "name": {
+            "type": "string"
+          },
+          "attributes": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "timezone": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "bearer": []
+    },
+    {
+      "apiKey": []
+    }
+  ],
+  "paths": {
+    "/v1/events": {
+      "post": {
+        "summary": "Ingest an event (async). Starts/cancels workflows. Fire-and-forget.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "event_key",
+                  "idempotency_key"
+                ],
+                "properties": {
+                  "event_key": {
+                    "type": "string",
+                    "example": "creative_studio.trial_started"
+                  },
+                  "idempotency_key": {
+                    "type": "string"
+                  },
+                  "occurred_at": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "subscriber": {
+                    "$ref": "#/components/schemas/Subscriber"
+                  },
+                  "data": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted (or deduped)"
+          },
+          "400": {
+            "description": "Validation error"
+          }
+        }
+      }
+    },
+    "/v1/events/activity": {
+      "post": {
+        "summary": "Thin activity ping — bumps last_seen_at (drives inactivity).",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "external_id"
+                ],
+                "properties": {
+                  "external_id": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted"
+          }
+        }
+      }
+    },
+    "/v1/subscribers": {
+      "post": {
+        "summary": "Identify/update a subscriber without triggering a workflow.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Subscriber"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Upserted"
+          }
+        }
+      }
+    },
+    "/v1/messages": {
+      "post": {
+        "summary": "Transactional send (synchronous). Required mail — OTP, reset, invite, share.",
+        "description": "Renders a transactional template and sends inline. Bypasses preferences + unsubscribe/complaint; blocked only by hard bounce. Returns the delivery result.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "template_key",
+                  "to"
+                ],
+                "properties": {
+                  "template_key": {
+                    "type": "string",
+                    "example": "login_otp"
+                  },
+                  "to": {
+                    "type": "object",
+                    "required": [
+                      "email"
+                    ],
+                    "properties": {
+                      "email": {
+                        "type": "string",
+                        "format": "email"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "external_id": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "data": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "idempotency_key": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sent"
+          },
+          "404": {
+            "description": "Template not found"
+          },
+          "422": {
+            "description": "Not delivered (e.g. hard-bounced address)"
+          }
+        }
+      }
+    }
+  }
+}

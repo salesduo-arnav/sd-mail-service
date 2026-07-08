@@ -1,0 +1,57 @@
+{
+  "__comment": "Parameterized ECS task-def template. Register 3 variants that differ ONLY in containerDefinitions[0].command: api = ['npm','start'] (migrator), worker = ['node','dist/worker.js'], scheduler = ['node','dist/scheduler.js']. Replace <PLACEHOLDERS>.",
+  "family": "<FAMILY>",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "<EXECUTION_ROLE_ARN>",
+  "taskRoleArn": "<TASK_ROLE_ARN>",
+  "containerDefinitions": [
+    {
+      "name": "app",
+      "image": "<ECR_REPO>:<TAG>",
+      "essential": true,
+      "command": ["npm", "start"],
+      "portMappings": [{ "containerPort": 3000, "protocol": "tcp" }],
+      "environment": [
+        { "name": "NODE_ENV", "value": "production" },
+        { "name": "PORT", "value": "3000" },
+        { "name": "EMAIL_TRANSPORT", "value": "ses" },
+        { "name": "SES_REGION", "value": "<AWS_REGION>" },
+        { "name": "PUBLIC_URL", "value": "https://<MAIL_HOST>" },
+        { "name": "CORS_ORIGINS", "value": "https://<ADMIN_HOST>" },
+        { "name": "SERVE_ADMIN", "value": "true" }
+      ],
+      "secrets": [
+        { "name": "PGHOST", "valueFrom": "<SSM_OR_SECRET_ARN>/PGHOST" },
+        { "name": "PGPORT", "valueFrom": "<SSM_OR_SECRET_ARN>/PGPORT" },
+        { "name": "PGUSER", "valueFrom": "<SSM_OR_SECRET_ARN>/PGUSER" },
+        { "name": "PGPASSWORD", "valueFrom": "<SSM_OR_SECRET_ARN>/PGPASSWORD" },
+        { "name": "PGDATABASE", "valueFrom": "<SSM_OR_SECRET_ARN>/PGDATABASE" },
+        { "name": "REDIS_URL", "valueFrom": "<SSM_OR_SECRET_ARN>/REDIS_URL" },
+        { "name": "ADMIN_SESSION_SECRET", "valueFrom": "<SSM_OR_SECRET_ARN>/ADMIN_SESSION_SECRET" },
+        { "name": "HMAC_SECRET", "valueFrom": "<SSM_OR_SECRET_ARN>/HMAC_SECRET" },
+        { "name": "UNSUB_SECRET", "valueFrom": "<SSM_OR_SECRET_ARN>/UNSUB_SECRET" },
+        { "name": "INTERNAL_API_KEY", "valueFrom": "<SSM_OR_SECRET_ARN>/INTERNAL_API_KEY" },
+        { "name": "ADMIN_EMAIL", "valueFrom": "<SSM_OR_SECRET_ARN>/ADMIN_EMAIL" },
+        { "name": "ADMIN_PASSWORD", "valueFrom": "<SSM_OR_SECRET_ARN>/ADMIN_PASSWORD" }
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""],
+        "interval": 15,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 30
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/sd-mail-service",
+          "awslogs-region": "<AWS_REGION>",
+          "awslogs-stream-prefix": "<FAMILY>"
+        }
+      }
+    }
+  ]
+}

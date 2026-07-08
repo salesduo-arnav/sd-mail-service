@@ -1,0 +1,123 @@
+# Dedicated, non-overlapping host ports so sd-mail-service runs standalone
+# alongside core-platform (api 3000, pg 5432), the studio stack (shared-redis 6379,
+# pg 5434), and core frontend (5173/5174):
+#   API 3100 · Admin 5180 · Postgres 5442 · Redis 6389 · Mailhog SMTP 1026 / UI 8026
+# Containers talk over the compose network on standard internal ports.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PGUSER:-postgres}
+      POSTGRES_PASSWORD: ${PGPASSWORD:-postgres}
+      POSTGRES_DB: ${PGDATABASE:-sd_mail}
+    ports:
+      - '5442:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${PGUSER:-postgres}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '6389:6379'
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Dev SMTP sink with a web UI at http://localhost:8026
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - '1026:1025'
+      - '8026:8025'
+
+  api:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    command: ['npm', 'start']
+    env_file:
+      - ./backend/.env
+    # These override backend/.env (which holds host-mode values) with the correct
+    # in-container service addresses + internal ports.
+    environment:
+      PORT: '3000'
+      PGHOST: postgres
+      PGPORT: '5432'
+      REDIS_URL: redis://redis:6379
+      SMTP_HOST: mailhog
+      SMTP_PORT: '1025'
+      PUBLIC_URL: http://localhost:3100
+    ports:
+      - '3100:3000'
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - node -e "require('http').get('http://localhost:3000/health',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    command: ['node', 'dist/worker.js']
+    env_file:
+      - ./backend/.env
+    environment:
+      PGHOST: postgres
+      PGPORT: '5432'
+      REDIS_URL: redis://redis:6379
+      SMTP_HOST: mailhog
+      SMTP_PORT: '1025'
+    # Wait for the api (which runs migrations) to be healthy before consuming.
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+  scheduler:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    command: ['node', 'dist/scheduler.js']
+    env_file:
+      - ./backend/.env
+    environment:
+      PGHOST: postgres
+      PGPORT: '5432'
+      REDIS_URL: redis://redis:6379
+      SMTP_HOST: mailhog
+      SMTP_PORT: '1025'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  redisdata:
