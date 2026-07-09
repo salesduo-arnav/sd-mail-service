@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, KeyRound, Copy, Eye } from 'lucide-react';
+import { Plus, Pencil, Trash2, KeyRound, Copy, Eye, ChevronDown, ChevronRight } from 'lucide-react';
 import { productsApi } from '@/services';
 import { useProducts } from '@/contexts/ProductContext';
+import { slugify } from '@/lib/slugify';
 import type { ApiKeyRow, Product } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Field } from '@/components/ui/field';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -30,13 +32,38 @@ export default function Products() {
     const [saving, setSaving] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
     const [keysFor, setKeysFor] = useState<Product | null>(null);
+    // Track whether the slug was hand-edited so typing a name doesn't clobber it.
+    const [slugEdited, setSlugEdited] = useState(false);
+    const [slugEditing, setSlugEditing] = useState(false);
+    const [showBranding, setShowBranding] = useState(false);
+
+    const openEditor = (p?: Product) => {
+        setSlugEdited(!!p); // existing products keep their slug
+        setSlugEditing(false);
+        setShowBranding(false);
+        setEditing(p ? { ...p } : { ...empty });
+    };
+
+    const onName = (name: string) => {
+        setEditing((prev) => (prev ? { ...prev, name, slug: slugEdited ? prev.slug : slugify(name) } : prev));
+    };
 
     const save = async () => {
         if (!editing) return;
+        if (!editing.name?.trim() || !editing.from_email?.trim()) {
+            toast.error('Name and from email are required');
+            return;
+        }
         setSaving(true);
         try {
-            if (editing.id) await productsApi.update(editing.id, editing);
-            else await productsApi.create(editing);
+            // Autofill the derivable fields so the user never has to.
+            const payload = {
+                ...editing,
+                slug: editing.slug || slugify(editing.name),
+                brand_name: editing.brand_name || editing.name,
+            };
+            if (editing.id) await productsApi.update(editing.id, payload);
+            else await productsApi.create(payload);
             toast.success('Product saved');
             setEditing(null);
             await refresh();
@@ -60,7 +87,7 @@ export default function Products() {
                     <h1 className="text-2xl font-semibold">Products</h1>
                     <p className="text-sm text-muted-foreground">Consuming platforms — branding, sending identity, and API keys.</p>
                 </div>
-                <Button onClick={() => setEditing({ ...empty })}>
+                <Button onClick={() => openEditor()}>
                     <Plus className="mr-1.5 h-4 w-4" /> New product
                 </Button>
             </div>
@@ -86,7 +113,7 @@ export default function Products() {
                                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setKeysFor(p)} title="API keys">
                                             <KeyRound className="h-4 w-4" />
                                         </Button>
-                                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditing(p)} title="Edit">
+                                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditor(p)} title="Edit">
                                             <Pencil className="h-4 w-4" />
                                         </Button>
                                         <Button
@@ -121,43 +148,81 @@ export default function Products() {
                     </DialogHeader>
                     {editing && (
                         <div className="grid grid-cols-2 gap-4">
-                            <Field label="Slug">
-                                <Input value={editing.slug ?? ''} onChange={(e) => setEditing({ ...editing, slug: e.target.value })} placeholder="creative-studio" />
+                            <Field label="Name" required htmlFor="p-name">
+                                <Input id="p-name" value={editing.name ?? ''} onChange={(e) => onName(e.target.value)} placeholder="Creative Studio" />
                             </Field>
-                            <Field label="Name">
-                                <Input value={editing.name ?? ''} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
+                            <Field label="From email" required htmlFor="p-from" info={'The sender recipients see. Format: "Brand" <no-reply@you.com>.'}>
+                                <Input id="p-from" value={editing.from_email ?? ''} onChange={(e) => setEditing({ ...editing, from_email: e.target.value })} placeholder='"Creative Studio" <no-reply@salesduo.com>' />
                             </Field>
-                            <Field label="Brand name">
-                                <Input value={editing.brand_name ?? ''} onChange={(e) => setEditing({ ...editing, brand_name: e.target.value })} />
-                            </Field>
-                            <Field label="Brand color">
-                                <div className="flex gap-2">
-                                    <input
-                                        type="color"
-                                        className="h-10 w-12 rounded-md border"
-                                        value={editing.brand_color ?? '#ff9900'}
-                                        onChange={(e) => setEditing({ ...editing, brand_color: e.target.value })}
+
+                            <div className="col-span-2 flex items-center gap-2 text-sm text-muted-foreground">
+                                <span>Slug:</span>
+                                {slugEditing ? (
+                                    <Input
+                                        className="h-8 max-w-xs"
+                                        value={editing.slug ?? ''}
+                                        onChange={(e) => {
+                                            setSlugEdited(true);
+                                            setEditing({ ...editing, slug: e.target.value });
+                                        }}
                                     />
-                                    <Input value={editing.brand_color ?? ''} onChange={(e) => setEditing({ ...editing, brand_color: e.target.value })} />
-                                </div>
-                            </Field>
-                            <Field label="From email">
-                                <Input value={editing.from_email ?? ''} onChange={(e) => setEditing({ ...editing, from_email: e.target.value })} placeholder='"Brand" <no-reply@…>' />
-                            </Field>
-                            <Field label="Reply-to email">
-                                <Input value={editing.reply_to_email ?? ''} onChange={(e) => setEditing({ ...editing, reply_to_email: e.target.value })} />
-                            </Field>
-                            <Field label="Logo URL" full>
-                                <Input value={editing.logo_url ?? ''} onChange={(e) => setEditing({ ...editing, logo_url: e.target.value })} />
-                            </Field>
-                            <Field label="Layout HTML (must contain {{ content }})" full>
-                                <Textarea
-                                    className="font-mono text-xs"
-                                    rows={6}
-                                    value={editing.layout_html ?? ''}
-                                    onChange={(e) => setEditing({ ...editing, layout_html: e.target.value })}
-                                />
-                            </Field>
+                                ) : (
+                                    <code className="font-mono text-foreground">{editing.slug || '—'}</code>
+                                )}
+                                {!slugEditing && (
+                                    <button type="button" className="text-primary hover:underline" onClick={() => setSlugEditing(true)}>
+                                        Edit
+                                    </button>
+                                )}
+                                <span className="text-xs">Stable id used in APIs and URLs; auto-derived from the name.</span>
+                            </div>
+
+                            <div className="col-span-2">
+                                <button
+                                    type="button"
+                                    className="flex items-center gap-1.5 text-sm font-medium"
+                                    onClick={() => setShowBranding(!showBranding)}
+                                >
+                                    {showBranding ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                                    Branding (optional)
+                                </button>
+                                {showBranding && (
+                                    <>
+                                        <p className="mb-3 mt-1 text-xs text-muted-foreground">Applied to every email's layout, footer, and buttons.</p>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <Field label="Brand name (optional)" htmlFor="p-brand" info="Shown in the email footer and usable as {{ brand_name }}. Default: the product name.">
+                                                <Input id="p-brand" value={editing.brand_name ?? ''} onChange={(e) => setEditing({ ...editing, brand_name: e.target.value })} placeholder={editing.name || 'Creative Studio'} />
+                                            </Field>
+                                            <Field label="Brand color (optional)" info="Colors the call-to-action buttons; usable as {{ brand_color }}. Default: #ff9900.">
+                                                <div className="flex gap-2">
+                                                    <input
+                                                        type="color"
+                                                        className="h-10 w-12 rounded-md border"
+                                                        value={editing.brand_color ?? '#ff9900'}
+                                                        onChange={(e) => setEditing({ ...editing, brand_color: e.target.value })}
+                                                    />
+                                                    <Input value={editing.brand_color ?? ''} onChange={(e) => setEditing({ ...editing, brand_color: e.target.value })} placeholder="#ff9900" />
+                                                </div>
+                                            </Field>
+                                            <Field label="Reply-to email (optional)" htmlFor="p-replyto" info="Where replies go, and the support contact shown in the footer.">
+                                                <Input id="p-replyto" value={editing.reply_to_email ?? ''} onChange={(e) => setEditing({ ...editing, reply_to_email: e.target.value })} placeholder="support@you.com" />
+                                            </Field>
+                                            <Field label="Logo URL (optional)" htmlFor="p-logo" info="Available in a custom layout as {{ logo_url }}; only appears if your layout HTML uses it.">
+                                                <Input id="p-logo" value={editing.logo_url ?? ''} onChange={(e) => setEditing({ ...editing, logo_url: e.target.value })} placeholder="https://…/logo.png" />
+                                            </Field>
+                                            <Field label="Layout HTML (optional)" full htmlFor="p-layout" info="Custom HTML wrapper for every email; must contain {{ content }} where the body is injected. A default is used if blank.">
+                                                <Textarea
+                                                    id="p-layout"
+                                                    className="font-mono text-xs"
+                                                    rows={6}
+                                                    value={editing.layout_html ?? ''}
+                                                    onChange={(e) => setEditing({ ...editing, layout_html: e.target.value })}
+                                                />
+                                            </Field>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
                         </div>
                     )}
                     <DialogFooter>
@@ -185,15 +250,6 @@ export default function Products() {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
-        </div>
-    );
-}
-
-function Field({ label, children, full }: { label: string; children: React.ReactNode; full?: boolean }) {
-    return (
-        <div className={`space-y-1.5 ${full ? 'col-span-2' : ''}`}>
-            <Label>{label}</Label>
-            {children}
         </div>
     );
 }
@@ -277,11 +333,14 @@ function KeysDialog({ product, onClose }: { product: Product; onClose: () => voi
                         ))}
                     </TableBody>
                 </Table>
-                <div className="flex gap-2">
-                    <Input placeholder="Key name (e.g. production)" value={name} onChange={(e) => setName(e.target.value)} />
-                    <Button onClick={create}>
-                        <Plus className="mr-1.5 h-4 w-4" /> Create
-                    </Button>
+                <div className="space-y-1.5">
+                    <Label htmlFor="key-name">New key name</Label>
+                    <div className="flex gap-2">
+                        <Input id="key-name" placeholder="e.g. production" value={name} onChange={(e) => setName(e.target.value)} />
+                        <Button onClick={create}>
+                            <Plus className="mr-1.5 h-4 w-4" /> Create
+                        </Button>
+                    </div>
                 </div>
             </DialogContent>
         </Dialog>

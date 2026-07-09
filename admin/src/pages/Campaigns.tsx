@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Send, Plus, RefreshCw, RotateCcw } from 'lucide-react';
-import { campaignsApi, templatesApi } from '@/services';
+import { campaignsApi, templatesApi, catalogApi } from '@/services';
 import { useProducts } from '@/contexts/ProductContext';
 import type { Campaign, Template, TemplateCta } from '@/types';
+import LiquidVariablesReference from '@/components/LiquidVariablesReference';
+import CtaEditor from '@/components/CtaEditor';
+import CategorySelect from '@/components/CategorySelect';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Field } from '@/components/ui/field';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -42,6 +45,7 @@ export default function Campaigns() {
     const { productId } = useProducts();
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [templates, setTemplates] = useState<Template[]>([]);
+    const [categories, setCategories] = useState<string[]>([]);
     const [audience, setAudience] = useState(0);
     const [draft, setDraft] = useState<Draft | null>(null);
     const [sending, setSending] = useState(false);
@@ -51,15 +55,9 @@ export default function Campaigns() {
         campaignsApi.list(productId).then(setCampaigns);
         templatesApi.list(productId).then((ts) => setTemplates(ts.filter((t) => t.type === 'marketing')));
         campaignsApi.audienceCount(productId).then((r) => setAudience(r.count));
+        catalogApi.categories(productId).then(setCategories);
     }, [productId]);
     useEffect(load, [load]);
-
-    const setCta = (which: 'primary' | 'secondary', field: 'label' | 'url', v: string) => {
-        if (!draft) return;
-        const cta: TemplateCta = { ...(draft.cta ?? {}) };
-        cta[which] = { label: cta[which]?.label ?? '', url: cta[which]?.url ?? '', [field]: v };
-        setDraft({ ...draft, cta });
-    };
 
     const resend = async (id: string) => {
         await campaignsApi.resend(id);
@@ -155,18 +153,15 @@ export default function Campaigns() {
                     {draft && (
                         <div className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1.5">
-                                    <Label>Name</Label>
-                                    <Input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="July product update" />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label>Category (for opt-outs)</Label>
-                                    <Input value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })} />
-                                </div>
+                                <Field label="Name" required htmlFor="cmp-name">
+                                    <Input id="cmp-name" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="July product update" />
+                                </Field>
+                                <Field label="Category" info="Recipients who opted out of this category are skipped.">
+                                    <CategorySelect value={draft.category} onChange={(category) => setDraft({ ...draft, category })} categories={categories} />
+                                </Field>
                             </div>
 
-                            <div className="space-y-1.5">
-                                <Label>Content</Label>
+                            <Field label="Content">
                                 <Select value={draft.mode} onValueChange={(v) => setDraft({ ...draft, mode: v as Mode })}>
                                     <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
                                     <SelectContent>
@@ -174,11 +169,10 @@ export default function Campaigns() {
                                         <SelectItem value="compose">Compose inline</SelectItem>
                                     </SelectContent>
                                 </Select>
-                            </div>
+                            </Field>
 
                             {draft.mode === 'template' ? (
-                                <div className="space-y-1.5">
-                                    <Label>Template</Label>
+                                <Field label="Template" required>
                                     <Select value={draft.template_id} onValueChange={(v) => setDraft({ ...draft, template_id: v })}>
                                         <SelectTrigger className="h-10"><SelectValue placeholder="Pick a marketing template" /></SelectTrigger>
                                         <SelectContent>
@@ -186,24 +180,17 @@ export default function Campaigns() {
                                             {templates.map((t) => <SelectItem key={t.id} value={t.id}>{t.key}</SelectItem>)}
                                         </SelectContent>
                                     </Select>
-                                </div>
+                                </Field>
                             ) : (
                                 <>
-                                    <div className="space-y-1.5">
-                                        <Label>Subject (Liquid)</Label>
-                                        <Input value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} />
-                                    </div>
-                                    <div className="space-y-1.5">
-                                        <Label>Body (Liquid + HTML)</Label>
-                                        <Textarea className="min-h-[160px] font-mono text-xs" value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} />
-                                    </div>
-                                    <div className="rounded-lg border p-3">
-                                        <Label className="mb-2 block text-xs uppercase tracking-wide text-muted-foreground">Call-to-action (optional)</Label>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <Input placeholder="Primary label" value={draft.cta?.primary?.label ?? ''} onChange={(e) => setCta('primary', 'label', e.target.value)} />
-                                            <Input placeholder="Primary URL" value={draft.cta?.primary?.url ?? ''} onChange={(e) => setCta('primary', 'url', e.target.value)} />
-                                        </div>
-                                    </div>
+                                    <Field label="Subject" required htmlFor="cmp-subject" info="Supports Liquid.">
+                                        <Input id="cmp-subject" value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} placeholder="What's new this month" />
+                                    </Field>
+                                    <Field label="Body" required htmlFor="cmp-body" info="Liquid + HTML. Wrapped in the product's layout when sent.">
+                                        <Textarea id="cmp-body" className="min-h-[160px] font-mono text-xs" value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} />
+                                    </Field>
+                                    <LiquidVariablesReference />
+                                    <CtaEditor value={draft.cta} onChange={(cta) => setDraft({ ...draft, cta })} />
                                 </>
                             )}
 

@@ -72,12 +72,9 @@ export interface TemplateInput {
     product_id: string;
     key: string;
     type: MessageType;
-    channel: Channel;
-    workflow_id: string | null;
     subject: string | null;
     body: string | null;
     cta: TemplateCta | null;
-    variables: string[] | null;
 }
 
 export const templatesApi = {

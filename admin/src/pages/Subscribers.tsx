@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Search, ShieldX, ShieldCheck, UserPlus } from 'lucide-react';
 import { subscribersApi } from '@/services';
 import { useProducts } from '@/contexts/ProductContext';
+import { SUPPRESSION_REASON_OPTIONS } from '@/lib/options';
 import type { Message, Preference, Subscriber, Suppression, SuppressionReason } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Field } from '@/components/ui/field';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -23,6 +25,21 @@ interface AddDraft {
     attributes: string;
 }
 const emptyAdd: AddDraft = { external_id: '', email: '', name: '', timezone: '', attributes: '{}' };
+
+const COMMON_TIMEZONES = [
+    'UTC',
+    'America/New_York',
+    'America/Chicago',
+    'America/Denver',
+    'America/Los_Angeles',
+    'Europe/London',
+    'Europe/Berlin',
+    'Asia/Kolkata',
+    'Asia/Singapore',
+    'Australia/Sydney',
+];
+
+const reasonLabel = (reason: string) => SUPPRESSION_REASON_OPTIONS.find((o) => o.value === reason)?.label ?? reason;
 
 interface Detail {
     subscriber: Subscriber;
@@ -43,13 +60,19 @@ export default function Subscribers() {
     const [add, setAdd] = useState<AddDraft | null>(null);
     const [saving, setSaving] = useState(false);
 
-    const search = async () => {
+    const search = useCallback(async () => {
+        if (!productId) return;
         setRows(await subscribersApi.search(productId, q));
-    };
+    }, [productId, q]);
+
+    // Auto-load on open and when the product changes; the search box filters on top.
+    useEffect(() => {
+        if (productId) subscribersApi.search(productId, '').then(setRows);
+    }, [productId]);
 
     const createSubscriber = async () => {
         if (!add) return;
-        if (!add.external_id) return toast.error('external_id is required');
+        if (!add.external_id) return toast.error('External ID is required');
         let attributes: Record<string, unknown> = {};
         if (add.attributes.trim()) {
             try {
@@ -129,29 +152,24 @@ export default function Subscribers() {
                     <DialogHeader><DialogTitle>Add subscriber</DialogTitle></DialogHeader>
                     {add && (
                         <div className="space-y-3">
-                            <div className="space-y-1.5">
-                                <Label>External ID (the product's own user id)</Label>
-                                <Input value={add.external_id} onChange={(e) => setAdd({ ...add, external_id: e.target.value })} placeholder="user_123" />
-                            </div>
+                            <Field label="External ID" required htmlFor="sub-ext" info="The product's own user id. If it already exists, the subscriber is updated (upsert).">
+                                <Input id="sub-ext" value={add.external_id} onChange={(e) => setAdd({ ...add, external_id: e.target.value })} placeholder="user_123" />
+                            </Field>
                             <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-1.5">
-                                    <Label>Email</Label>
-                                    <Input value={add.email} onChange={(e) => setAdd({ ...add, email: e.target.value })} placeholder="jane@acme.com" />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label>Name</Label>
-                                    <Input value={add.name} onChange={(e) => setAdd({ ...add, name: e.target.value })} />
-                                </div>
+                                <Field label="Email (optional)" htmlFor="sub-email">
+                                    <Input id="sub-email" value={add.email} onChange={(e) => setAdd({ ...add, email: e.target.value })} placeholder="jane@acme.com" />
+                                </Field>
+                                <Field label="Name (optional)" htmlFor="sub-name">
+                                    <Input id="sub-name" value={add.name} onChange={(e) => setAdd({ ...add, name: e.target.value })} />
+                                </Field>
                             </div>
-                            <div className="space-y-1.5">
-                                <Label>Timezone (optional)</Label>
-                                <Input value={add.timezone} onChange={(e) => setAdd({ ...add, timezone: e.target.value })} placeholder="America/New_York" />
-                            </div>
-                            <div className="space-y-1.5">
-                                <Label>Attributes (JSON)</Label>
-                                <Textarea className="min-h-[80px] font-mono text-xs" value={add.attributes} onChange={(e) => setAdd({ ...add, attributes: e.target.value })} />
-                            </div>
-                            <p className="text-xs text-muted-foreground">If a subscriber with this external_id already exists, it's updated (upsert).</p>
+                            <Field label="Timezone (optional)" htmlFor="sub-tz" info="IANA name, e.g. America/New_York.">
+                                <Input id="sub-tz" list="tz-catalog" value={add.timezone} onChange={(e) => setAdd({ ...add, timezone: e.target.value })} placeholder="America/New_York" />
+                                <datalist id="tz-catalog">{COMMON_TIMEZONES.map((t) => <option key={t} value={t} />)}</datalist>
+                            </Field>
+                            <Field label="Attributes (optional)" htmlFor="sub-attrs" info={'Custom JSON, usable in templates as attributes.*, e.g. {"plan": "pro"}.'}>
+                                <Textarea id="sub-attrs" className="min-h-[80px] font-mono text-xs" value={add.attributes} onChange={(e) => setAdd({ ...add, attributes: e.target.value })} />
+                            </Field>
                         </div>
                     )}
                     <DialogFooter>
@@ -181,7 +199,7 @@ export default function Subscribers() {
                             </TableRow>
                         ))}
                         {rows.length === 0 && (
-                            <TableRow><TableCell colSpan={4} className="py-8 text-center text-muted-foreground">Search to find subscribers.</TableCell></TableRow>
+                            <TableRow><TableCell colSpan={4} className="py-8 text-center text-muted-foreground">No subscribers yet — they appear automatically as your product sends events.</TableCell></TableRow>
                         )}
                     </TableBody>
                 </Table>
@@ -224,7 +242,7 @@ export default function Subscribers() {
                                         <div className="space-y-2">
                                             {detail.suppressions.map((s) => (
                                                 <div key={s.id} className="flex items-center justify-between rounded-md border p-2">
-                                                    <Badge variant="destructive">{s.reason}</Badge>
+                                                    <Badge variant="destructive">{reasonLabel(s.reason)}</Badge>
                                                     <Button size="sm" variant="ghost" onClick={() => unsuppress(s.reason)}>
                                                         <ShieldCheck className="mr-1.5 h-4 w-4" /> Unsuppress
                                                     </Button>
@@ -238,8 +256,8 @@ export default function Subscribers() {
                                             <Select value={suppressReason} onValueChange={(v) => setSuppressReason(v as SuppressionReason)}>
                                                 <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                                                 <SelectContent>
-                                                    {['manual', 'hard_bounce', 'complaint', 'unsubscribe'].map((r) => (
-                                                        <SelectItem key={r} value={r}>{r}</SelectItem>
+                                                    {SUPPRESSION_REASON_OPTIONS.map((o) => (
+                                                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                                                     ))}
                                                 </SelectContent>
                                             </Select>

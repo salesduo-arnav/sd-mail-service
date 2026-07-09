@@ -32,7 +32,6 @@ export interface SendStep {
     type: 'send';
     channel: Channel;
     template: string;
-    audience?: Audience;
 }
 export interface DelayStep {
     type: 'delay';
@@ -44,8 +43,6 @@ export interface CancelOnStep {
 }
 export interface RepeatStep {
     type: 'repeat';
-    every?: string;
-    until?: string;
 }
 export type Step = SendStep | DelayStep | CancelOnStep | RepeatStep;
 
@@ -85,12 +82,10 @@ export interface Template {
     product_id: string;
     key: string;
     type: MessageType;
-    workflow_id: string | null;
     channel: Channel;
     subject: string | null;
     body: string | null;
     cta: TemplateCta | null;
-    variables: string[] | null;
     updated_at?: string;
 }
 

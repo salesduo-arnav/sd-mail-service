@@ -3,11 +3,15 @@ import { toast } from 'sonner';
 import { Plus, Pencil, Trash2, History } from 'lucide-react';
 import { workflowsApi, templatesApi, catalogApi } from '@/services';
 import { useProducts } from '@/contexts/ProductContext';
+import { slugify } from '@/lib/slugify';
+import { AUDIENCE_OPTIONS } from '@/lib/options';
 import type { Audience, Step, Workflow, WorkflowVersion } from '@/types';
 import StepBuilder from '@/components/StepBuilder';
+import CategorySelect from '@/components/CategorySelect';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Field } from '@/components/ui/field';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -53,6 +57,9 @@ export default function Workflows() {
     const [saving, setSaving] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState<Workflow | null>(null);
     const [historyFor, setHistoryFor] = useState<Workflow | null>(null);
+    // Track whether the key was hand-edited so typing a name doesn't clobber it.
+    const [keyEdited, setKeyEdited] = useState(false);
+    const [keyEditing, setKeyEditing] = useState(false);
 
     const load = useCallback(() => {
         if (!productId) return;
@@ -63,8 +70,16 @@ export default function Workflows() {
     }, [productId]);
     useEffect(load, [load]);
 
+    const openNew = () => {
+        setKeyEdited(false);
+        setKeyEditing(false);
+        setEditing({ ...emptyWf });
+    };
+
     const openEdit = async (w: Workflow) => {
         const detail = await workflowsApi.get(w.id);
+        setKeyEdited(true);
+        setKeyEditing(false);
         setEditing({
             id: w.id,
             key: w.key,
@@ -76,10 +91,19 @@ export default function Workflows() {
         });
     };
 
+    const onName = (name: string) => {
+        setEditing((prev) => (prev ? { ...prev, name, key: prev.id || keyEdited ? prev.key : slugify(name) } : prev));
+    };
+
     const save = async () => {
         if (!editing) return;
-        if (!editing.key || !editing.name || !editing.trigger_event_key) {
-            toast.error('Key, name and trigger are required');
+        const key = editing.key || slugify(editing.name);
+        if (!editing.name.trim() || !key || !editing.trigger_event_key.trim()) {
+            toast.error('Name and trigger event are required');
+            return;
+        }
+        if (editing.steps.length === 0) {
+            toast.error('Add at least one step');
             return;
         }
         setSaving(true);
@@ -93,7 +117,7 @@ export default function Workflows() {
                     steps: editing.steps,
                 });
             } else {
-                await workflowsApi.create({ product_id: productId, ...editing });
+                await workflowsApi.create({ product_id: productId, ...editing, key });
             }
             toast.success(editing.id ? 'Saved as a new version' : 'Workflow created');
             setEditing(null);
@@ -122,7 +146,7 @@ export default function Workflows() {
                     <h1 className="text-2xl font-semibold">Workflows</h1>
                     <p className="text-sm text-muted-foreground">Event-triggered automations. Editing steps creates a new version; in-flight runs keep theirs.</p>
                 </div>
-                <Button onClick={() => setEditing({ ...emptyWf })} disabled={!productId}>
+                <Button onClick={openNew} disabled={!productId}>
                     <Plus className="mr-1.5 h-4 w-4" /> New workflow
                 </Button>
             </div>
@@ -178,37 +202,54 @@ export default function Workflows() {
                     {editing && (
                         <div className="space-y-4">
                             <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-1.5">
-                                    <Label>Key</Label>
-                                    <Input value={editing.key} disabled={!!editing.id} onChange={(e) => setEditing({ ...editing, key: e.target.value })} placeholder="welcome" />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label>Name</Label>
-                                    <Input value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label>Trigger event key</Label>
-                                    <Input list="trigger-catalog" value={editing.trigger_event_key} onChange={(e) => setEditing({ ...editing, trigger_event_key: e.target.value })} placeholder="creative_studio.trial_started" />
+                                <Field label="Name" required htmlFor="wf-name">
+                                    <Input id="wf-name" value={editing.name} onChange={(e) => onName(e.target.value)} placeholder="Welcome onboarding" />
+                                </Field>
+                                <Field label="Trigger event" required htmlFor="wf-trigger" info="The event your product emits to start this workflow, e.g. app.trial_started.">
+                                    <Input id="wf-trigger" list="trigger-catalog" value={editing.trigger_event_key} onChange={(e) => setEditing({ ...editing, trigger_event_key: e.target.value })} placeholder="app.trial_started" />
                                     <datalist id="trigger-catalog">{eventKeys.map((k) => <option key={k} value={k} />)}</datalist>
-                                </div>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="space-y-1.5">
-                                        <Label>Category</Label>
-                                        <Input list="cat-catalog" value={editing.category} onChange={(e) => setEditing({ ...editing, category: e.target.value })} />
-                                        <datalist id="cat-catalog">{categories.map((c) => <option key={c} value={c} />)}</datalist>
-                                    </div>
-                                    <div className="space-y-1.5">
-                                        <Label>Audience</Label>
-                                        <Select value={editing.audience} onValueChange={(v) => setEditing({ ...editing, audience: v as Audience })}>
-                                            <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="event_subscriber">event_subscriber</SelectItem>
-                                                <SelectItem value="org_owner">org_owner</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-                                </div>
+                                </Field>
+                                <Field label="Category" info="Groups related emails and controls unsubscribes (subscribers opt out per category). Shown in this list and on each subscriber's preferences.">
+                                    <CategorySelect value={editing.category} onChange={(category) => setEditing({ ...editing, category })} categories={categories} />
+                                </Field>
+                                <Field label="Send to" info="Organization owner sends to the subscriber's attributes.org_owner_email, falling back to the subscriber. Leave as Event subscriber if your product has no org system.">
+                                    <Select value={editing.audience} onValueChange={(v) => setEditing({ ...editing, audience: v as Audience })}>
+                                        <SelectTrigger className="h-10"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            {AUDIENCE_OPTIONS.map((o) => (
+                                                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </Field>
                             </div>
+
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <span>Key:</span>
+                                {editing.id ? (
+                                    <code className="font-mono text-foreground">{editing.key}</code>
+                                ) : keyEditing ? (
+                                    <Input
+                                        className="h-8 max-w-xs"
+                                        value={editing.key}
+                                        onChange={(e) => {
+                                            setKeyEdited(true);
+                                            setEditing({ ...editing, key: e.target.value });
+                                        }}
+                                    />
+                                ) : (
+                                    <code className="font-mono text-foreground">{editing.key || '—'}</code>
+                                )}
+                                {!editing.id && !keyEditing && (
+                                    <button type="button" className="text-primary hover:underline" onClick={() => setKeyEditing(true)}>
+                                        Edit
+                                    </button>
+                                )}
+                                <span className="text-xs">
+                                    {editing.id ? 'Stable id; cannot change after creation.' : 'Stable id used in APIs; auto-derived from the name.'}
+                                </span>
+                            </div>
+
                             <div>
                                 <Label className="mb-2 block">Steps</Label>
                                 <StepBuilder value={editing.steps} onChange={(steps) => setEditing({ ...editing, steps })} templates={templateKeys} eventKeys={eventKeys} />

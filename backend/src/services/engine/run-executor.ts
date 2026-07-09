@@ -63,7 +63,7 @@ export async function performSend(params: {
         });
         return;
     }
-    const audience = (params.sendStep.audience ?? params.workflow.audience) as Audience;
+    const audience = params.workflow.audience as Audience;
     const toEmail = resolveRecipientEmail(audience, params.subscriber);
     await sendTemplate({
         product: params.product,

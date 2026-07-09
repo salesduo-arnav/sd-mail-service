@@ -1,8 +1,10 @@
 import { Plus, Trash2, ArrowUp, ArrowDown, Send, Clock, Ban, Repeat } from 'lucide-react';
-import type { Step, SendStep, DelayStep, CancelOnStep, RepeatStep, Channel, Audience } from '@/types';
+import type { Step, SendStep, DelayStep, CancelOnStep } from '@/types';
+import { DELAY_UNIT_OPTIONS } from '@/lib/options';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Field } from '@/components/ui/field';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
@@ -11,14 +13,6 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-
-const UNITS = [
-    { v: 's', label: 'seconds' },
-    { v: 'm', label: 'minutes' },
-    { v: 'h', label: 'hours' },
-    { v: 'd', label: 'days' },
-    { v: 'w', label: 'weeks' },
-];
 
 const STEP_META: Record<Step['type'], { icon: typeof Send; label: string; color: string }> = {
     send: { icon: Send, label: 'Send', color: 'text-primary' },
@@ -30,6 +24,7 @@ const STEP_META: Record<Step['type'], { icon: typeof Send; label: string; color:
 function newStep(type: Step['type']): Step {
     switch (type) {
         case 'send':
+            // channel stays email — it's the only delivered channel.
             return { type: 'send', channel: 'email', template: '' };
         case 'delay':
             return { type: 'delay', duration: '1d' };
@@ -105,7 +100,7 @@ export default function StepBuilder({
                         {step.type === 'cancel_on' && (
                             <CancelOnEditor step={step} eventKeys={eventKeys} onChange={(s) => update(i, s)} />
                         )}
-                        {step.type === 'repeat' && <RepeatEditor step={step} onChange={(s) => update(i, s)} />}
+                        {step.type === 'repeat' && <RepeatEditor />}
                     </div>
                 );
             })}
@@ -134,45 +129,17 @@ export default function StepBuilder({
 
 function SendEditor({ step, templates, onChange }: { step: SendStep; templates: string[]; onChange: (s: SendStep) => void }) {
     return (
-        <div className="grid grid-cols-3 gap-3">
-            <div className="space-y-1">
-                <Label className="text-xs">Channel</Label>
-                <Select value={step.channel} onValueChange={(v) => onChange({ ...step, channel: v as Channel })}>
-                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                        {['email', 'slack', 'in_app', 'sms'].map((c) => (
-                            <SelectItem key={c} value={c}>{c}</SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-            </div>
-            <div className="space-y-1">
-                <Label className="text-xs">Template</Label>
-                <Select value={step.template} onValueChange={(v) => onChange({ ...step, template: v })}>
-                    <SelectTrigger className="h-9"><SelectValue placeholder="Pick a template" /></SelectTrigger>
-                    <SelectContent>
-                        {templates.length === 0 && <div className="px-2 py-1.5 text-xs text-muted-foreground">No templates yet</div>}
-                        {templates.map((t) => (
-                            <SelectItem key={t} value={t}>{t}</SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-            </div>
-            <div className="space-y-1">
-                <Label className="text-xs">Audience (optional)</Label>
-                <Select
-                    value={step.audience ?? 'default'}
-                    onValueChange={(v) => onChange({ ...step, audience: v === 'default' ? undefined : (v as Audience) })}
-                >
-                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="default">workflow default</SelectItem>
-                        <SelectItem value="event_subscriber">event_subscriber</SelectItem>
-                        <SelectItem value="org_owner">org_owner</SelectItem>
-                    </SelectContent>
-                </Select>
-            </div>
-        </div>
+        <Field label="Template">
+            <Select value={step.template} onValueChange={(v) => onChange({ ...step, template: v })}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Pick a template" /></SelectTrigger>
+                <SelectContent>
+                    {templates.length === 0 && <div className="px-2 py-1.5 text-xs text-muted-foreground">No templates yet</div>}
+                    {templates.map((t) => (
+                        <SelectItem key={t} value={t}>{t}</SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+        </Field>
     );
 }
 
@@ -204,19 +171,17 @@ function DelayEditor({ step, onChange }: { step: DelayStep; onChange: (s: DelayS
                 </Button>
             </div>
             {isUntil ? (
-                <div className="space-y-1">
-                    <Label className="text-xs">Wait until event data field</Label>
+                <Field label="Wait until this event data field" info="A timestamp in the event's data; if missing or past, sends now.">
                     <Input
                         className="h-9"
                         placeholder="trial_ends_at"
                         value={field}
                         onChange={(e) => onChange({ ...step, duration: `until:${e.target.value}` })}
                     />
-                </div>
+                </Field>
             ) : (
                 <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                        <Label className="text-xs">Amount</Label>
+                    <Field label="Amount">
                         <Input
                             className="h-9"
                             type="number"
@@ -224,18 +189,17 @@ function DelayEditor({ step, onChange }: { step: DelayStep; onChange: (s: DelayS
                             value={amount}
                             onChange={(e) => onChange({ ...step, duration: `${e.target.value || 1}${unit}` })}
                         />
-                    </div>
-                    <div className="space-y-1">
-                        <Label className="text-xs">Unit</Label>
+                    </Field>
+                    <Field label="Unit">
                         <Select value={unit} onValueChange={(v) => onChange({ ...step, duration: `${amount}${v}` })}>
                             <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
                             <SelectContent>
-                                {UNITS.map((u) => (
-                                    <SelectItem key={u.v} value={u.v}>{u.label}</SelectItem>
+                                {DELAY_UNIT_OPTIONS.map((u) => (
+                                    <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>
                                 ))}
                             </SelectContent>
                         </Select>
-                    </div>
+                    </Field>
                 </div>
             )}
         </div>
@@ -294,27 +258,11 @@ function CancelOnEditor({
     );
 }
 
-function RepeatEditor({ step, onChange }: { step: RepeatStep; onChange: (s: RepeatStep) => void }) {
+function RepeatEditor() {
+    // Repeat has no options: the engine re-arms the run using the preceding Delay as the interval.
     return (
-        <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1">
-                <Label className="text-xs">Every (optional; defaults to the preceding delay)</Label>
-                <Input
-                    className="h-9"
-                    placeholder="14d"
-                    value={step.every ?? ''}
-                    onChange={(e) => onChange({ ...step, every: e.target.value || undefined })}
-                />
-            </div>
-            <div className="space-y-1">
-                <Label className="text-xs">Until (optional)</Label>
-                <Input
-                    className="h-9"
-                    placeholder="e.g. a stop condition"
-                    value={step.until ?? ''}
-                    onChange={(e) => onChange({ ...step, until: e.target.value || undefined })}
-                />
-            </div>
-        </div>
+        <p className="text-xs text-muted-foreground">
+            Repeats the workflow from the top using the preceding <span className="font-medium">Delay</span> as the interval, until the run is canceled (e.g. a re-engagement nudge every 14 days until the user returns).
+        </p>
     );
 }

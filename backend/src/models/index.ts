@@ -39,7 +39,6 @@ Workflow.belongsTo(WorkflowVersion, { foreignKey: 'active_version_id', as: 'acti
 
 Product.hasMany(Template, { foreignKey: 'product_id', as: 'templates' });
 Template.belongsTo(Product, { foreignKey: 'product_id', as: 'product' });
-Template.belongsTo(Workflow, { foreignKey: 'workflow_id', as: 'workflow' });
 
 Workflow.hasMany(WorkflowRun, { foreignKey: 'workflow_id', as: 'runs' });
 WorkflowRun.belongsTo(Workflow, { foreignKey: 'workflow_id', as: 'workflow' });

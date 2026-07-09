@@ -19,12 +19,10 @@ const templateSchema = z.object({
     product_id: z.string().uuid(),
     key: z.string().min(1),
     type: z.enum(['transactional', 'marketing']).default('marketing'),
-    workflow_id: z.string().uuid().nullable().optional(),
     channel: z.enum(['email', 'slack', 'in_app', 'sms']).default('email'),
     subject: z.string().nullable().optional(),
     body: z.string().nullable().optional(),
     cta: ctaSchema,
-    variables: z.array(z.string()).nullable().optional(),
 });
 
 async function assertValidLiquid(subject?: string | null, body?: string | null): Promise<void> {

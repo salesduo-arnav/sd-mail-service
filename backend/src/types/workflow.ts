@@ -4,7 +4,6 @@ export interface SendStep {
     type: 'send';
     channel: 'email' | 'slack' | 'in_app' | 'sms';
     template: string; // template key
-    audience?: 'event_subscriber' | 'org_owner';
 }
 
 export interface DelayStep {
@@ -18,9 +17,7 @@ export interface CancelOnStep {
 }
 
 export interface RepeatStep {
-    type: 'repeat';
-    every?: string; // cadence; defaults to the preceding delay's duration
-    until?: string;
+    type: 'repeat'; // re-arms the run using the preceding delay as the interval
 }
 
 export type Step = SendStep | DelayStep | CancelOnStep | RepeatStep;

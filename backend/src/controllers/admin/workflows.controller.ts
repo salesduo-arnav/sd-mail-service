@@ -6,10 +6,10 @@ import { WorkflowVersion } from '../../models/workflow_version';
 import { Step } from '../../types/workflow';
 
 const stepSchema: z.ZodType<Step> = z.union([
-    z.object({ type: z.literal('send'), channel: z.enum(['email', 'slack', 'in_app', 'sms']), template: z.string(), audience: z.enum(['event_subscriber', 'org_owner']).optional() }),
+    z.object({ type: z.literal('send'), channel: z.enum(['email', 'slack', 'in_app', 'sms']), template: z.string() }),
     z.object({ type: z.literal('delay'), duration: z.string() }),
     z.object({ type: z.literal('cancel_on'), event_keys: z.array(z.string()) }),
-    z.object({ type: z.literal('repeat'), every: z.string().optional(), until: z.string().optional() }),
+    z.object({ type: z.literal('repeat') }),
 ]);
 
 export const listWorkflows = asyncHandler(async (req: Request, res: Response) => {

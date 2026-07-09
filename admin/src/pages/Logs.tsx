@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { logsApi } from '@/services';
 import { useProducts } from '@/contexts/ProductContext';
+import { SUPPRESSION_REASON_OPTIONS } from '@/lib/options';
 import type { Message, Metrics, RunStep, Suppression, WorkflowRun } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -19,6 +20,8 @@ function Stat({ label, value }: { label: string; value: string | number }) {
         </Card>
     );
 }
+
+const reasonLabel = (reason: string) => SUPPRESSION_REASON_OPTIONS.find((o) => o.value === reason)?.label ?? reason;
 
 const badgeVariant = (s: string) =>
     s === 'sent' || s === 'delivered' || s === 'completed' || s === 'active'
@@ -155,7 +158,7 @@ export default function Logs() {
                                     <TableRow key={s.id}>
                                         <TableCell className="text-muted-foreground">{s.created_at.slice(0, 19)}</TableCell>
                                         <TableCell>{s.email}</TableCell>
-                                        <TableCell><Badge variant="destructive">{s.reason}</Badge></TableCell>
+                                        <TableCell><Badge variant="destructive">{reasonLabel(s.reason)}</Badge></TableCell>
                                     </TableRow>
                                 ))}
                                 {suppressions.length === 0 && <Empty span={3} />}
