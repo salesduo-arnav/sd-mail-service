@@ -25,6 +25,7 @@ Start at **[00-overview](00-overview.md)** for the one-pager, then **[01-rationa
 | [12-observability-and-ops](12-observability-and-ops.md) | Logging, metrics, retries/DLQ, runbook, scaling |
 | [13-rollout-phases](13-rollout-phases.md) | Phased delivery + migration of existing emails |
 | [14-glossary](14-glossary.md) | Terms: subscriber, workflow, run, step, template… |
+| [15-email-fundamentals](15-email-fundamentals.md) | Email from first principles: SMTP, SES/SNS, bounces/reputation, SPF/DKIM/DMARC, and the SNS signature-verification webhook |
 | [adr/](adr/) | Architecture Decision Records — one per locked decision |
 
 ## Import-ready artifacts

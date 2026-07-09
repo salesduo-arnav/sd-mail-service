@@ -46,6 +46,8 @@ const schema = z.object({
     SMTP_PASS: z.string().optional(),
     SMTP_FROM: z.string().default('"SalesDuo" <no-reply@salesduo.com>'),
     SES_REGION: z.string().default('us-east-1'),
+    // Optional allowlist: only accept SNS feedback from this topic ARN (recommended in prod).
+    SES_SNS_TOPIC_ARN: z.string().optional(),
 
     // Default superadmin (seeded). Change in production.
     ADMIN_EMAIL: z.string().email().default('admin@salesduo.com'),

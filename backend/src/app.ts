@@ -15,6 +15,7 @@ import './models'; // register models + associations
 import v1Routes from './routes/v1.routes';
 import publicRoutes from './routes/public.routes';
 import webhookRoutes from './routes/webhook.routes';
+import { postSesFeedback } from './controllers/webhooks.controller';
 import adminRoutes from './routes/admin.routes';
 import internalRoutes from './routes/internal.routes';
 import { openapiSpec } from './openapi/spec';
@@ -42,10 +43,12 @@ export function createApp() {
     );
     app.use(cookieParser());
 
-    // Webhook routes that need a raw body are mounted before express.json()
-    // in Phase 2 (SES). For now everything is JSON.
+    // SNS/SES feedback authenticates by signature over a raw text body, so it's mounted
+    // before express.json() (which would otherwise consume and re-encode the body).
+    app.post('/webhooks/ses', express.text({ type: '*/*', limit: '256kb' }), postSesFeedback);
+
     app.use(express.json({ limit: '256kb' }));
-    app.use(morgan('tiny', { stream: { write: (m) => Logger.http(m.trim()) } }));
+    app.use(morgan('tiny', { stream: { write: (m) => Logger.http(m.trim()) }, skip: (req) => req.path === '/health' }));
 
     // Rate limits (per-IP, in-memory per instance — for multi-instance, back with a
     // shared store). Ingest is high-volume; admin login is brute-force sensitive.

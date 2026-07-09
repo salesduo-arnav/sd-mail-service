@@ -2,9 +2,8 @@ import { Queue, JobsOptions } from 'bullmq';
 import { bullConnectionOpts } from '../config/redis';
 
 export const QUEUE_EVENT = 'sdmail_events';
-export const QUEUE_DELIVERY = 'sdmail_delivery'; // Phase 2
-export const QUEUE_DELAYED = 'sdmail_delayed'; // Phase 2
-export const QUEUE_MAINTENANCE = 'sdmail_maintenance'; // Phase 2 (nightly sweep)
+export const QUEUE_DELAYED = 'sdmail_delayed'; // delayed workflow sends
+export const QUEUE_MAINTENANCE = 'sdmail_maintenance'; // nightly sweep
 export const QUEUE_CAMPAIGN = 'sdmail_campaign'; // marketing campaign fan-out
 
 const defaultJobOptions: JobsOptions = {
