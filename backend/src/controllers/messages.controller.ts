@@ -16,6 +16,7 @@ const bodySchema = z.object({
         external_id: z.string().optional().nullable(),
     }),
     data: z.record(z.unknown()).optional(),
+    reply_to: z.string().email().optional(),
     idempotency_key: z.string().min(1).optional(),
 });
 
@@ -75,6 +76,7 @@ export const postMessage = asyncHandler(async (req: Request, res: Response) => {
         toName: body.to.name,
         subscriber,
         data: body.data ?? {},
+        replyTo: body.reply_to,
     });
 
     if (idemKey) {

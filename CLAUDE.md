@@ -17,15 +17,15 @@ Most workflows are wrapped in the root **`Makefile`** (`make help` lists targets
 - **Reset local data:** `make reset` (down + wipe volumes)
 
 Backend, run from `backend/`:
-- `npm run dev` — self-contained: waits for DB → migrates → seeds → starts API (`:3100`, hot reload). `npm run dev:worker` / `npm run dev:scheduler` are the other two processes (each waits for DB, so start order is irrelevant).
+- `npm run dev` — self-contained: waits for DB → migrates → seeds → starts API (`:3110`, hot reload). `npm run dev:worker` / `npm run dev:scheduler` are the other two processes (each waits for DB, so start order is irrelevant).
 - `npm test` — Jest suite. Runs with `NODE_ENV=test PGDATABASE=sd_mail_test --runInBand`. Single test: `npm test -- duration.test.ts` or `npm test -- -t "name"`.
 - `npm run lint` — ESLint. `npm run build` — `tsc`.
 - `npm run migrate:up` / `migrate:down`; create one with `npm run migrate:create -- <name>` (raw `.js` files in `backend/migrations/`, **hand-written, not generated from models**).
 - `npm run openapi` — regenerate `docs/openapi.json` from `src/openapi/spec.ts` (served live at `GET /openapi.json`, rendered at `/docs`).
 
-Admin, run from `admin/`: `npm run dev` (`:5180`, proxies `/admin` → `:3100`), `npm run build`, `npm run typecheck`, `npm run lint`.
+Admin, run from `admin/`: `npm run dev` (`:5180`, proxies `/admin` → `:3110`), `npm run build`, `npm run typecheck`, `npm run lint`.
 
-**Ports (deliberately non-overlapping** so this runs alongside core-platform/studio): API `3100`, Admin `5180`, Postgres `5442`, Redis `6389`, Mailhog SMTP `1026`/UI `8026`. Local email is captured by Mailhog — nothing leaves the machine in dev.
+**Ports (deliberately non-overlapping** so this runs alongside core-platform/studio): API `3110`, Admin `5180`, Postgres `5442`, Redis `6389`, Mailhog SMTP `1026`/UI `8026`. Local email is captured by Mailhog — nothing leaves the machine in dev.
 
 ## Architecture
 

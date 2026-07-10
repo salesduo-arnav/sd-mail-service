@@ -1,9 +1,9 @@
 # sd-mail-service — developer command shortcuts.
 # Run `make` (or `make help`) to list targets.
-# Dedicated standalone ports: API 3100 · Admin 5180 · Postgres 5442 · Redis 6389 · Mailhog SMTP 1026 / UI 8026
+# Dedicated standalone ports: API 3110 · Admin 5180 · Postgres 5442 · Redis 6389 · Mailhog SMTP 1026 / UI 8026
 
 COMPOSE := docker compose
-API     := http://localhost:3100
+API     := http://localhost:3110
 # Create a product + API key in the admin, then pass it: `make smoke KEY=sdm_...`
 KEY     ?=
 
@@ -67,7 +67,7 @@ seed-docker: ## Seed inside the running api container (use after `make up`)
 # the stuck terminal input mode on Ctrl-C. If a terminal ever gets stuck: run `reset` in Git Bash.
 TSND := node node_modules/ts-node-dev/lib/bin.js --respawn --transpile-only
 
-dev-api: ## Wait for DB, migrate, seed, then run the API on :3100 (hot reload)
+dev-api: ## Wait for DB, migrate, seed, then run the API on :3110 (hot reload)
 	cd backend && npm run db:ready && npm run migrate:up && npm run seed && $(TSND) src/server.ts
 
 dev-api-only: ## Run just the API (skip migrate/seed) — DB must already be set up

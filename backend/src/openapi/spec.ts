@@ -101,6 +101,11 @@ export const openapiSpec = {
                                         },
                                     },
                                     data: { type: 'object', additionalProperties: true },
+                                    reply_to: {
+                                        type: 'string',
+                                        format: 'email',
+                                        description: 'Per-message Reply-To; falls back to the product reply-to (e.g. contact-us replies to the submitter).',
+                                    },
                                     idempotency_key: { type: 'string' },
                                 },
                             },

@@ -1,7 +1,7 @@
 # Dedicated, non-overlapping host ports so sd-mail-service runs standalone
 # alongside core-platform (api 3000, pg 5432), the studio stack (shared-redis 6379,
 # pg 5434), and core frontend (5173/5174):
-#   API 3100 · Admin 5180 · Postgres 5442 · Redis 6389 · Mailhog SMTP 1026 / UI 8026
+#   API 3110 · Admin 5180 · Postgres 5442 · Redis 6389 · Mailhog SMTP 1026 / UI 8026
 # Containers talk over the compose network on standard internal ports.
 services:
   postgres:
@@ -58,9 +58,9 @@ services:
       REDIS_URL: redis://redis:6379
       SMTP_HOST: mailhog
       SMTP_PORT: '1025'
-      PUBLIC_URL: http://localhost:3100
+      PUBLIC_URL: http://localhost:3110
     ports:
-      - '3100:3000'
+      - '3110:3000'
     healthcheck:
       test:
         - CMD-SHELL

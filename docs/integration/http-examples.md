@@ -2,7 +2,7 @@
 
 Producers integrate with **plain HTTP** — no client library. Get a product API key from the admin UI, then call the REST endpoints below.
 
-- **Rendered docs (Redoc):** `GET /docs` — e.g. http://localhost:3100/docs
+- **Rendered docs (Redoc):** `GET /docs` — e.g. http://localhost:3110/docs
 - **Machine-readable spec:** [`../openapi.json`](../openapi.json), also served at `GET /openapi.json`
 
 Base URL: `SD_MAIL_SERVICE_URL` (e.g. `https://mail.salesduo.com`). Auth: `Authorization: Bearer <API_KEY>` or `X-Api-Key: <API_KEY>`.

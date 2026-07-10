@@ -10,7 +10,7 @@ sd-mail-service uses its own non-overlapping port block so it runs alongside cor
 
 | Service | Port | (avoids) |
 |---------|------|----------|
-| **API** | `3100` | core-platform api `3000` |
+| **API** | `3110` | core-platform api `3000` |
 | **Admin UI** | `5180` | core frontend `5173/5174` |
 | **Postgres** | `5442` | core `5432`, studio `5434` |
 | **Redis** | `6389` | studio `shared-redis` `6379` |
@@ -32,8 +32,8 @@ cp backend/.env.example backend/.env      # keep dev defaults
 docker compose up --build                 # postgres + redis + mailhog + api + worker + scheduler + admin
 docker compose exec api npm run seed      # once: bootstrap the superadmin (nothing else)
 # Admin  → http://localhost:5180   (login: admin@salesduo.com / admin12345)
-# API    → http://localhost:3100/health
-# Docs   → http://localhost:3100/docs   (rendered OpenAPI / Redoc)
+# API    → http://localhost:3110/health
+# Docs   → http://localhost:3110/docs   (rendered OpenAPI / Redoc)
 # Mailhog→ http://localhost:8026   (view sent email)
 ```
 
@@ -47,12 +47,12 @@ docker compose up -d postgres redis mailhog   # infra only, on 5442 / 6389 / 102
 cd backend
 cp .env.example .env
 npm install
-npm run dev            # waits for DB → migrates → seeds → starts api :3100
+npm run dev            # waits for DB → migrates → seeds → starts api :3110
 # in separate terminals (each waits for the DB, so order doesn't matter):
 npm run dev:worker     # queue worker
 npm run dev:scheduler  # nightly sweep
 
-cd ../admin && npm install && npm run dev   # admin :5180 (proxies /admin → :3100)
+cd ../admin && npm install && npm run dev   # admin :5180 (proxies /admin → :3110)
 ```
 
 `npm test` runs the Jest suite (uses `PGDATABASE=sd_mail_test`); `npm run lint` lints.
@@ -74,14 +74,14 @@ Create a product + API key in the admin, then (with Mailhog open at **http://loc
 KEY=<your product api key>
 
 # Async event (drives any workflow you built for this event_key)
-curl -X POST http://localhost:3100/v1/events \
+curl -X POST http://localhost:3110/v1/events \
   -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
   -d '{"event_key":"app.trial_started","idempotency_key":"t1",
        "subscriber":{"external_id":"u1","email":"you@example.com","name":"You"}}'
 
 # Synchronous transactional send (returns the delivery result). `login_otp` must be a
 # transactional template you created in the admin.
-curl -X POST http://localhost:3100/v1/messages \
+curl -X POST http://localhost:3110/v1/messages \
   -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
   -d '{"template_key":"login_otp","to":{"email":"you@example.com","name":"You"},
        "data":{"otp":"123456","expires_minutes":5}}'

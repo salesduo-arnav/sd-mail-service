@@ -122,7 +122,7 @@ export function createApp() {
 
     // Serve the built admin SPA ONLY for a single-container/production deploy
     // (production, or opt-in via SERVE_ADMIN=true). In dev the admin runs on its
-    // own Vite server (:5180), so the api at :3100 stays API-only — no double-serve.
+    // own Vite server (:5180), so the api at :3110 stays API-only — no double-serve.
     const adminDist = path.resolve(__dirname, '../../admin/dist');
     if ((isProd || env.SERVE_ADMIN) && fs.existsSync(path.join(adminDist, 'index.html'))) {
         app.use(express.static(adminDist));

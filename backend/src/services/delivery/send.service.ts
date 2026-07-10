@@ -32,6 +32,8 @@ export interface DeliverInput {
     runId?: string | null;
     runStepId?: string | null;
     campaignId?: string | null;
+    /** Per-message reply-to override; falls back to the product's reply_to_email. */
+    replyTo?: string | null;
     /** When true, a provider error is recorded as a terminal `failed` message instead of
      *  thrown for retry (set by the enclosing job on its last attempt). */
     finalAttempt?: boolean;
@@ -148,7 +150,7 @@ export async function deliver(input: DeliverInput): Promise<SendResult> {
         res = await emailDriver().send({
             from: product.from_email,
             to: toEmail,
-            replyTo: product.reply_to_email ?? undefined,
+            replyTo: input.replyTo ?? product.reply_to_email ?? undefined,
             subject: rendered.subject,
             html: rendered.html,
             headers: unsub ? { 'List-Unsubscribe': `<${unsub}>` } : undefined,
@@ -179,6 +181,7 @@ export interface SendTemplateInput {
     toName?: string | null;
     data?: Record<string, unknown>;
     category?: string | null;
+    replyTo?: string | null;
     runId?: string | null;
     runStepId?: string | null;
 }
@@ -199,6 +202,7 @@ export async function sendTemplate(input: SendTemplateInput): Promise<SendResult
         toName: input.toName,
         data: input.data,
         category: input.category,
+        replyTo: input.replyTo,
         runId: input.runId,
         runStepId: input.runStepId,
     });
