@@ -1,10 +1,13 @@
 import { Router } from 'express';
 import { requireServiceAuth } from '../middlewares/serviceAuth';
-import { sendInternalEmail } from '../controllers/internal.controller';
+import { sendInternalEmail, postInternalEvent, postInternalMessage } from '../controllers/internal.controller';
 
 const router = Router();
 
-// Forward-compat with core-platform's internal API (X-Service-Key auth).
+// Service-to-service plane (X-Service-Key auth). Product is named via `product_slug`
+// in the body, so trusted first-party producers use one shared key for every product.
 router.post('/email/send', requireServiceAuth, sendInternalEmail);
+router.post('/events', requireServiceAuth, postInternalEvent);
+router.post('/messages', requireServiceAuth, postInternalMessage);
 
 export default router;

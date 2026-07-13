@@ -9,8 +9,9 @@ const GROUPS: { key: LiquidVariableSource; title: string }[] = [
     { key: 'brand', title: 'Derived / branding' },
 ];
 
-const EXAMPLE = `POST /v1/events
+const EXAMPLE = `POST /internal/events
 {
+  "product_slug": "creative-studio",
   "subscriber": { "name": "Ada Lovelace", "email": "ada@x.com",
                   "attributes": { "plan": "pro" } },
   "data": { "invoice_url": "https://…" }

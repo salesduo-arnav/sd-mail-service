@@ -1,7 +1,6 @@
 import { api } from './lib/api';
 import type {
     Product,
-    ApiKeyRow,
     Workflow,
     WorkflowVersion,
     Template,
@@ -33,15 +32,20 @@ export const authApi = {
 
 export const productsApi = {
     list: () => data<Product[]>(api.get('/admin/products')),
-    get: (id: string) => data<{ product: Product; api_keys: ApiKeyRow[] }>(api.get(`/admin/products/${id}`)),
+    get: (id: string) => data<{ product: Product }>(api.get(`/admin/products/${id}`)),
     create: (body: Partial<Product>) => data<Product>(api.post('/admin/products', body)),
     update: (id: string, body: Partial<Product>) => data<Product>(api.patch(`/admin/products/${id}`, body)),
     remove: (id: string) => data(api.delete(`/admin/products/${id}`)),
-    createKey: (id: string, name: string) =>
-        data<{ id: string; name: string; api_key: string }>(api.post(`/admin/products/${id}/keys`, { name })),
-    revealKey: (id: string, keyId: string) =>
-        data<{ id: string; api_key: string }>(api.get(`/admin/products/${id}/keys/${keyId}/reveal`)),
-    revokeKey: (id: string, keyId: string) => data(api.delete(`/admin/products/${id}/keys/${keyId}`)),
+};
+
+export interface ProvisionSummary {
+    products: { created: number; skipped: number };
+    templates: { created: number; skipped: number };
+    workflows: { created: number; skipped: number };
+}
+
+export const provisioningApi = {
+    run: () => data<ProvisionSummary>(api.post('/admin/provisioning')),
 };
 
 export interface WorkflowInput {

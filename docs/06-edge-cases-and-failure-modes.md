@@ -55,10 +55,10 @@ Every non-obvious case, with the intended handling. Grouped by area.
 
 | Case | Handling |
 |------|----------|
-| **Transactional to a hard-bounced address** | **Blocked** (undeliverable). The synchronous `/v1/messages` call returns a failure the caller can surface ("we couldn't reach that address"). |
-| **Signup OTP — no account/subscriber yet** | Send to a **raw email** via `/v1/messages` (omit `external_id`); the `message` is logged with `to_email` and `subscriber_id` null. No premature profile created; when they later sign up, their real subscriber is created normally. |
+| **Transactional to a hard-bounced address** | **Blocked** (undeliverable). The synchronous `/internal/messages` call returns a failure the caller can surface ("we couldn't reach that address"). |
+| **Signup OTP — no account/subscriber yet** | Send to a **raw email** via `/internal/messages` (omit `external_id`); the `message` is logged with `to_email` and `subscriber_id` null. No premature profile created; when they later sign up, their real subscriber is created normally. |
 | **sd-mail-service unavailable when core needs an OTP** | Login/signup are blocked (full dependency, no core SMTP fallback). Mitigation: HA + fast timeout + limited in-request retries + alerting; the caller shows "couldn't send code, try again." See [ADR-0006](adr/0006-transactional-and-migration.md). |
-| **Duplicate transactional send (retry)** | Optional `idempotency_key` on `/v1/messages` dedups, so a retried request doesn't send two OTPs. |
+| **Duplicate transactional send (retry)** | Optional `idempotency_key` on `/internal/messages` dedups, so a retried request doesn't send two OTPs. |
 | **Invitation email fails** | Core currently rolls the invite back if the mail fails; with the synchronous API it fails the invite creation on a non-`sent` result — same guarantee, now via sd-mail-service. |
 | **Wrong class on a template** (e.g. a nudge marked transactional) | Admin-set `type` is authoritative; a marketing nudge marked transactional would skip the unsubscribe footer — caught in review/send-test. Keep required-only templates transactional. |
 
@@ -76,9 +76,9 @@ Every non-obvious case, with the intended handling. Grouped by area.
 
 | Case | Handling |
 |------|----------|
-| **Leaked/compromised product API key** | Revoke (`revoked_at`); blast radius is one product. Keys are stored hashed. |
-| **Cross-product data access** | Every query is scoped by `product_id`; product API keys are product-scoped. (Admins are superadmins with full cross-product access by design.) |
-| **Spoofed `external_id` / email in an event** | Trust boundary = the product's API key. sd-mail-service does not authenticate end users; producers are responsible for sending correct identities. Optional HMAC signing hardens payload integrity. |
+| **Leaked/compromised service key** | Rotate `INTERNAL_API_KEY` (cuts off all producers at once). The service is internal-only — never exposed publicly. |
+| **Cross-product data access** | Every query is scoped by `product_id` (resolved from `product_slug`). Producers are trusted first-party services; admins are superadmins with full cross-product access by design. |
+| **Spoofed `external_id` / email in an event** | Trust boundary = the shared service key. sd-mail-service does not authenticate end users; producers are responsible for sending correct identities. |
 | **Unsubscribe-token tampering** | Tokens are signed (HMAC) and scoped to subscriber+category; invalid tokens are rejected. |
 
 ## Producer-side resilience

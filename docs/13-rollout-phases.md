@@ -7,8 +7,8 @@ A pragmatic path from empty repo to the Creative Studio emails live, then expans
 **Goal:** ingest events and send one email.
 
 - New repo `sd-mail-service`; process skeleton (api / worker / scheduler), Docker, CI/CD.
-- Postgres schema + migrations for: `products`, `api_keys`, `subscribers`, `subscriber_preferences`, `event_log` ([03](03-data-model.md)).
-- Ingest API (`/v1/events`, `/v1/subscribers`, `/v1/events/activity`) with API-key auth + idempotency + BullMQ enqueue.
+- Postgres schema + migrations for: `products`, `subscribers`, `subscriber_preferences`, `event_log` ([03](03-data-model.md)).
+- Ingest API (`POST /internal/events`) with shared-service-key auth + `product_slug` + idempotency + BullMQ enqueue.
 - Subscriber upsert on events.
 - Email driver (Nodemailer/SES) + Liquid renderer + product `layout_html` wrapper.
 - **Exit:** emit an event → an immediate email sends (hard-coded single workflow) end-to-end in dev.
@@ -20,7 +20,7 @@ A pragmatic path from empty repo to the Creative Studio emails live, then expans
 - `workflows`, `workflow_versions`, `templates`, `workflow_runs`, `run_steps`, `messages`, `suppressions`.
 - Workflow engine: trigger matching, run creation, step executor (`send`/`delay`/`cancel_on`/`repeat`).
 - Scheduler: BullMQ delayed jobs + nightly sweep; cancellation path.
-- **Transactional send:** synchronous `POST /v1/messages` + the class-aware gate (transactional bypasses opt-out/unsubscribe/complaint, honors hard bounce, no footer). `messages.type`/`to_email`, nullable `subscriber_id`.
+- **Transactional send:** synchronous `POST /internal/messages` + the class-aware gate (transactional bypasses opt-out/unsubscribe/complaint, honors hard bounce, no footer). `messages.type`/`to_email`, nullable `subscriber_id`.
 - Preferences + unsubscribe (signed tokens) + suppression enforcement at send.
 - **Exit:** schedule-and-cancel proven — a delayed nudge fires only when its cancel event is absent; idempotency holds. A transactional send to an unsubscribed address is delivered; to a hard-bounced address is blocked.
 
@@ -30,8 +30,8 @@ A pragmatic path from empty repo to the Creative Studio emails live, then expans
 
 - Seed the `creative-studio` product + workflows #1, #2, #3, #5, #6 with the copy from [07](07-creative-studio-example.md).
 - Wire producers:
-  - core-platform (TS SDK): emit `trial_started`, `integration.connected`, `plan_purchased` at existing lifecycle points.
-  - studio (Python SDK): emit `generation.completed` / `activity` at generation flows.
+  - core-platform (TS client): emit `trial_started`, `integration_connected`, `plan_purchased`, `trial_ended` at existing lifecycle points.
+  - studio (Python client): emit `generation_completed` / `activity` at generation flows.
 - Verify each of the 5 workflows end-to-end in staging.
 - **Exit:** the five emails send correctly against real product events; cancellations work.
 

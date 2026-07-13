@@ -55,7 +55,6 @@ const schema = z.object({
 
     // Secrets — dev defaults, enforced non-default in production below
     ADMIN_SESSION_SECRET: z.string().default('dev-admin-session-secret-change-me'),
-    HMAC_SECRET: z.string().default('dev-hmac-secret-change-me'),
     UNSUB_SECRET: z.string().default('dev-unsubscribe-secret-change-me'),
     INTERNAL_API_KEY: z.string().default('dev-internal-api-key-change-me'),
 });
@@ -74,7 +73,6 @@ const env = parsed.data;
 if (isProduction) {
     const mustSet: Array<keyof typeof env> = [
         'ADMIN_SESSION_SECRET',
-        'HMAC_SECRET',
         'UNSUB_SECRET',
         'INTERNAL_API_KEY',
     ];

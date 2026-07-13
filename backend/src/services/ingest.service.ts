@@ -1,4 +1,5 @@
 import { UniqueConstraintError } from 'sequelize';
+import { z } from 'zod';
 import { EventLog } from '../models/event_log';
 import { Subscriber } from '../models/subscriber';
 import { enqueueEvent } from '../queues';
@@ -19,6 +20,25 @@ export interface EventInput {
     subscriber?: SubscriberInput;
     data?: Record<string, unknown>;
 }
+
+// Request-body schemas for the event contract (used by the /internal event endpoint).
+export const MAX_DATA_BYTES = 32 * 1024;
+
+const subscriberSchema = z.object({
+    external_id: z.string().min(1),
+    email: z.string().email().optional().nullable(),
+    name: z.string().optional().nullable(),
+    attributes: z.record(z.unknown()).optional(),
+    timezone: z.string().optional().nullable(),
+});
+
+export const eventSchema = z.object({
+    event_key: z.string().min(1),
+    idempotency_key: z.string().min(1),
+    occurred_at: z.string().datetime().optional(),
+    subscriber: subscriberSchema.optional(),
+    data: z.record(z.unknown()).optional(),
+});
 
 /**
  * Upsert a subscriber by (product_id, external_id). Merges attributes, refreshes

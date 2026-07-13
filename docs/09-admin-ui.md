@@ -8,9 +8,9 @@ There is a **single admin type — superadmin** — with full access to every pr
 
 | Section | What admins do |
 |---------|----------------|
-| **Products** | Create/edit a product; set branding (name, color, logo), `from_email`, `reply_to_email`, and the branded `layout_html`. Manage API keys (create, name, revoke). |
+| **Products** | Create/edit a product; set branding (name, color, logo), `from_email`, `reply_to_email`, and the branded `layout_html`. (No API keys — producers use the shared service key + `product_slug`.) |
 | **Workflows** | List per product. Create/edit a workflow: trigger event key, ordered steps (add `delay` with a duration, `cancel_on` with event keys, `send` with a template), category, audience, enable/disable. Everything is data — **no deploy**. |
-| **Templates** | Edit `subject` and `body` (Liquid + HTML), primary/secondary **CTA** blocks (label + link), and the **`type`** — `marketing` (attached to a workflow, gets an unsubscribe footer) or `transactional` (standalone, no workflow, sent via `/v1/messages`, no footer). A variable helper lists available vars (from the workflow for marketing, or the send `data` for transactional). **Live preview** renders with sample data; **Send test** delivers to the admin's own email. |
+| **Templates** | Edit `subject` and `body` (Liquid + HTML), primary/secondary **CTA** blocks (label + link), and the **`type`** — `marketing` (attached to a workflow, gets an unsubscribe footer) or `transactional` (standalone, no workflow, sent via `/internal/messages`, no footer). A variable helper lists available vars (from the workflow for marketing, or the send `data` for transactional). **Live preview** renders with sample data; **Send test** delivers to the admin's own email. |
 | **Subscribers** | Look up a subscriber by `external_id`/email; view attributes, `last_seen_at`, preferences, and message history. Manually suppress/unsuppress. |
 | **Logs & analytics** | Event stream (ingested events), workflow runs (active/canceled/completed), messages (sent/bounced/failed), suppression list. Filter by product/subscriber/date. |
 | **Audit** | Every admin edit (who changed which workflow/template/version, when). |
@@ -22,10 +22,10 @@ Because there's no role scoping, all sections list **all products** for every ad
 The editor is a thin UI over the [step schema](04-event-and-workflow-model.md#workflow-definition). It never lets an admin write arbitrary code — only pick step types and fill fields:
 
 ```
-Trigger:  [ creative_studio.trial_started ▾ ]
+Trigger:  [ trial_started ▾ ]
 Steps:
   1. delay      [ 1 ] [ days ▾ ]
-  2. cancel on  [ creative_studio.integration.connected  (+) ]
+  2. cancel on  [ integration_connected  (+) ]
   3. send email [ template: no_integration_1d ▾ ]  audience [ event_subscriber ▾ ]
 Category: [ onboarding ▾ ]     Enabled: [x]
 ```
@@ -34,7 +34,7 @@ Saving creates a new `workflow_version`; in-flight runs keep their pinned versio
 
 ## Admin authentication
 
-- Admin sessions are separate from product API keys (which are for ingestion only).
+- Admin sessions are separate from the producer service key (which is for ingestion only).
 - A single **superadmin** role; every Admin API call requires a valid superadmin session, enforced server-side.
 - Options: dedicated admin login, or SSO/OIDC against SalesDuo's existing identity. Decided at build time; the `admin_users` table is provider-agnostic and simply lists superadmins.
 

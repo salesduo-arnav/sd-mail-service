@@ -1,17 +1,17 @@
-/** Hand-authored OpenAPI 3.0 spec for the producer-facing API (/v1/*). */
+/** Hand-authored OpenAPI 3.0 spec for the internal producer API (/internal/*). */
 export const openapiSpec = {
     openapi: '3.0.3',
     info: {
-        title: 'sd-mail-service — Producer API',
-        version: '1.0.0',
+        title: 'sd-mail-service — Internal Producer API',
+        version: '2.0.0',
         description:
-            'Event ingestion (async marketing/lifecycle) and transactional send (sync required mail). Auth with a product API key.',
+            'Internal-only. Event ingestion (async lifecycle) and transactional send (sync required mail). ' +
+            'Auth with the shared service key (X-Service-Key = INTERNAL_API_KEY); the product is named per request via product_slug.',
     },
     servers: [{ url: '/' }],
     components: {
         securitySchemes: {
-            bearer: { type: 'http', scheme: 'bearer' },
-            apiKey: { type: 'apiKey', in: 'header', name: 'X-Api-Key' },
+            serviceKey: { type: 'apiKey', in: 'header', name: 'X-Service-Key' },
         },
         schemas: {
             Subscriber: {
@@ -27,20 +27,21 @@ export const openapiSpec = {
             },
         },
     },
-    security: [{ bearer: [] }, { apiKey: [] }],
+    security: [{ serviceKey: [] }],
     paths: {
-        '/v1/events': {
+        '/internal/events': {
             post: {
-                summary: 'Ingest an event (async). Starts/cancels workflows. Fire-and-forget.',
+                summary: 'Ingest a lifecycle event (async). Starts/cancels workflows.',
                 requestBody: {
                     required: true,
                     content: {
                         'application/json': {
                             schema: {
                                 type: 'object',
-                                required: ['event_key', 'idempotency_key'],
+                                required: ['product_slug', 'event_key', 'idempotency_key'],
                                 properties: {
-                                    event_key: { type: 'string', example: 'creative_studio.trial_started' },
+                                    product_slug: { type: 'string', example: 'creative-studio' },
+                                    event_key: { type: 'string', example: 'trial_started' },
                                     idempotency_key: { type: 'string' },
                                     occurred_at: { type: 'string', format: 'date-time' },
                                     subscriber: { $ref: '#/components/schemas/Subscriber' },
@@ -50,46 +51,28 @@ export const openapiSpec = {
                         },
                     },
                 },
-                responses: { '202': { description: 'Accepted (or deduped)' }, '400': { description: 'Validation error' } },
-            },
-        },
-        '/v1/events/activity': {
-            post: {
-                summary: 'Thin activity ping — bumps last_seen_at (drives inactivity).',
-                requestBody: {
-                    required: true,
-                    content: {
-                        'application/json': {
-                            schema: { type: 'object', required: ['external_id'], properties: { external_id: { type: 'string' } } },
-                        },
-                    },
+                responses: {
+                    '202': { description: 'Accepted (or deduped)' },
+                    '400': { description: 'Validation error' },
+                    '401': { description: 'Invalid service key' },
+                    '404': { description: 'Unknown product_slug' },
                 },
-                responses: { '202': { description: 'Accepted' } },
             },
         },
-        '/v1/subscribers': {
-            post: {
-                summary: 'Identify/update a subscriber without triggering a workflow.',
-                requestBody: {
-                    required: true,
-                    content: { 'application/json': { schema: { $ref: '#/components/schemas/Subscriber' } } },
-                },
-                responses: { '200': { description: 'Upserted' } },
-            },
-        },
-        '/v1/messages': {
+        '/internal/messages': {
             post: {
                 summary: 'Transactional send (synchronous). Required mail — OTP, reset, invite, share.',
                 description:
-                    'Renders a transactional template and sends inline. Bypasses preferences + unsubscribe/complaint; blocked only by hard bounce. Returns the delivery result.',
+                    'Renders a transactional template and sends inline. Bypasses preferences + unsubscribe/complaint; blocked only by hard bounce.',
                 requestBody: {
                     required: true,
                     content: {
                         'application/json': {
                             schema: {
                                 type: 'object',
-                                required: ['template_key', 'to'],
+                                required: ['product_slug', 'template_key', 'to'],
                                 properties: {
+                                    product_slug: { type: 'string', example: 'core-platform' },
                                     template_key: { type: 'string', example: 'login_otp' },
                                     to: {
                                         type: 'object',
@@ -104,7 +87,7 @@ export const openapiSpec = {
                                     reply_to: {
                                         type: 'string',
                                         format: 'email',
-                                        description: 'Per-message Reply-To; falls back to the product reply-to (e.g. contact-us replies to the submitter).',
+                                        description: 'Per-message Reply-To; falls back to the product reply-to.',
                                     },
                                     idempotency_key: { type: 'string' },
                                 },
@@ -115,8 +98,38 @@ export const openapiSpec = {
                 responses: {
                     '200': { description: 'Sent' },
                     '422': { description: 'Not delivered (e.g. hard-bounced address)' },
-                    '404': { description: 'Template not found' },
+                    '404': { description: 'Template or product not found' },
                 },
+            },
+        },
+        '/internal/email/send': {
+            post: {
+                summary: 'Pre-rendered relay — send an already-rendered email (no template).',
+                requestBody: {
+                    required: true,
+                    content: {
+                        'application/json': {
+                            schema: {
+                                type: 'object',
+                                required: ['to', 'subject'],
+                                properties: {
+                                    to: {
+                                        description: 'Single address or array of addresses.',
+                                        oneOf: [
+                                            { type: 'string', format: 'email' },
+                                            { type: 'array', items: { type: 'string', format: 'email' } },
+                                        ],
+                                    },
+                                    subject: { type: 'string' },
+                                    html: { type: 'string', description: 'html or text required.' },
+                                    text: { type: 'string' },
+                                    product_slug: { type: 'string', description: 'Optional — attributes branding + a message log row.' },
+                                },
+                            },
+                        },
+                    },
+                },
+                responses: { '200': { description: 'Sent' }, '400': { description: 'Validation error' } },
             },
         },
     },

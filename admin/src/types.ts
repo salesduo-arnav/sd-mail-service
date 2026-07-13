@@ -18,15 +18,6 @@ export interface Product {
     created_at?: string;
 }
 
-export interface ApiKeyRow {
-    id: string;
-    name: string | null;
-    last_used_at: string | null;
-    revoked_at: string | null;
-    created_at: string;
-    revealable: boolean;
-}
-
 // ---- Workflow steps ----
 export interface SendStep {
     type: 'send';

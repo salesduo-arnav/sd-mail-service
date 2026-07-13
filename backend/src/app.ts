@@ -12,7 +12,6 @@ import env, { isProd } from './config/env';
 import { errorHandler, notFound } from './utils/errors';
 import Logger from './utils/logger';
 import './models'; // register models + associations
-import v1Routes from './routes/v1.routes';
 import publicRoutes from './routes/public.routes';
 import webhookRoutes from './routes/webhook.routes';
 import { postSesFeedback } from './controllers/webhooks.controller';
@@ -52,7 +51,7 @@ export function createApp() {
 
     // Rate limits (per-IP, in-memory per instance — for multi-instance, back with a
     // shared store). Ingest is high-volume; admin login is brute-force sensitive.
-    app.use('/v1', rateLimit({ windowMs: 60_000, max: 600, standardHeaders: true, legacyHeaders: false }));
+    app.use('/internal', rateLimit({ windowMs: 60_000, max: 600, standardHeaders: true, legacyHeaders: false }));
     app.use(
         '/admin/auth/login',
         rateLimit({
@@ -86,7 +85,6 @@ export function createApp() {
     });
 
     // ---- API routes ----
-    app.use('/v1', v1Routes);
     app.use('/', publicRoutes); // GET /u/:token (unsubscribe)
     app.use('/webhooks', webhookRoutes); // provider bounce/complaint feedback
     app.use('/admin', adminRoutes); // superadmin control plane

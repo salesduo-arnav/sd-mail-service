@@ -1,5 +1,4 @@
 import { Product } from './product';
-import { ApiKey } from './api_key';
 import { Subscriber } from './subscriber';
 import { SubscriberPreference } from './subscriber_preference';
 import { EventLog } from './event_log';
@@ -14,9 +13,6 @@ import { Suppression } from './suppression';
 import { Campaign } from './campaign';
 
 // ---- Associations (the relationship graph) ----
-
-Product.hasMany(ApiKey, { foreignKey: 'product_id', as: 'apiKeys' });
-ApiKey.belongsTo(Product, { foreignKey: 'product_id', as: 'product' });
 
 Product.hasMany(Subscriber, { foreignKey: 'product_id', as: 'subscribers' });
 Subscriber.belongsTo(Product, { foreignKey: 'product_id', as: 'product' });
@@ -70,7 +66,6 @@ AdminUser.hasMany(WorkflowVersion, { foreignKey: 'created_by', as: 'authoredVers
 
 export {
     Product,
-    ApiKey,
     Subscriber,
     SubscriberPreference,
     EventLog,

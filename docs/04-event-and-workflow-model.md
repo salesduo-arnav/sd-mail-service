@@ -8,7 +8,7 @@ Three tables model automations. The mental model is **recipe → recipe edition 
 
 | Concept | Table | What it is | Analogy |
 |---------|-------|-----------|---------|
-| **Workflow** | `workflows` | The *definition/rule*: "when `trial_started`, wait 1 day, cancel if `integration.connected`, else send." Stable identity `(product, key)` + routing (`trigger_event_key`, `category`, `audience`, `enabled`) + a pointer to the live version (`active_version_id`). It does **not** store the steps directly. | the recipe |
+| **Workflow** | `workflows` | The *definition/rule*: "when `trial_started`, wait 1 day, cancel if `integration_connected`, else send." Stable identity `(product, key)` + routing (`trigger_event_key`, `category`, `audience`, `enabled`) + a pointer to the live version (`active_version_id`). It does **not** store the steps directly. | the recipe |
 | **Workflow version** | `workflow_versions` | One saved revision of that workflow's `steps` JSON. Editing in the admin UI creates a **new** version (v1, v2, v3…) and moves `active_version_id`. Gives a safe edit history + audit (`created_by`) + rollback. | a specific edition of the recipe |
 | **Workflow run** | `workflow_runs` | One *execution* for **one subscriber**, started by **one trigger event**. Holds the live `status` (`active → canceled \| completed \| failed`), the `cancel_on` keys, and — crucially — **pins the `workflow_version_id`** it started on. Schedules `run_steps` and produces `messages`. | one time you actually cook it, for one guest |
 
@@ -19,13 +19,14 @@ Three tables model automations. The mental model is **recipe → recipe edition 
 A producer sends one endpoint for everything:
 
 ```http
-POST /v1/events
-Authorization: Bearer <product_api_key>        # or X-Api-Key
+POST /internal/events
+X-Service-Key: <SD_MAIL_SERVICE_KEY>
 Content-Type: application/json
 
 {
-  "event_key": "creative_studio.trial_started",
-  "idempotency_key": "trial_started:sub_abc:2026-07-07",
+  "product_slug": "creative-studio",
+  "event_key": "trial_started",
+  "idempotency_key": "trial_started:org_1",
   "occurred_at": "2026-07-07T10:00:00Z",
   "subscriber": {
     "external_id": "user_uuid",
@@ -41,23 +42,21 @@ Content-Type: application/json
 }
 ```
 
-- **`event_key`** — namespaced `"<product>.<event>"`. Matches workflow triggers and cancellation keys.
+- **`event_key`** — a fact name (e.g. `trial_started`); the product comes from `product_slug`. Matches workflow triggers and cancellation keys.
 - **`idempotency_key`** — producer-chosen; unique per `(product, key)`. Retries are safe.
 - **`subscriber`** — upserts the profile. Producers may send a thin version (just `external_id`) once the profile exists.
 - **`data`** — free-form variables available to templates (`{{ data.upgrade_link }}`) and to workflow config.
 - Response: `202 Accepted` with the `event_log` id. Processing is async → producers treat this as **fire-and-forget**.
 
-Companion endpoints:
-- `POST /v1/subscribers` — identify/update a profile without triggering a workflow.
-- `POST /v1/events/activity` — a thin ping that only bumps `last_seen_at` (used for inactivity re-arming). It is itself an event with `event_key` = `<product>.activity`.
+An `activity` event (via `/internal/events`) bumps `last_seen_at` and drives inactivity re-arming — there are no separate subscribers/activity endpoints.
 
-Full API + SDK details: [08-integration-guide](08-integration-guide.md).
+Full producer details: [08-integration-guide](08-integration-guide.md).
 
 ## Two ways to send: events (marketing) vs messages (transactional)
 
 There are **two distinct paths**, and they exist because required mail and lifecycle mail have opposite needs:
 
-| | **Events** (`POST /v1/events`) | **Messages** (`POST /v1/messages`) |
+| | **Events** (`POST /internal/events`) | **Messages** (`POST /internal/messages`) |
 |---|---|---|
 | For | Lifecycle / **marketing** nudges | Required / **transactional** mail (OTP, password reset, invitation, contact, share) |
 | Mode | **Async** — enqueue, `202`, fire-and-forget | **Synchronous** — render + send inline, returns the delivery result |
@@ -68,7 +67,7 @@ There are **two distinct paths**, and they exist because required mail and lifec
 ### Transactional (synchronous) send
 
 ```http
-POST /v1/messages          (auth: product API key)
+POST /internal/messages          (auth: X-Service-Key; body includes product_slug)
 {
   "template_key": "login_otp",
   "to": { "email": "jane@acme.com", "name": "Jane", "external_id": "user_uuid" },  // external_id optional
@@ -79,7 +78,7 @@ POST /v1/messages          (auth: product API key)
    or 4xx/5xx with an error the caller can surface (e.g. hard-bounced address, render error)
 ```
 
-- A message's class = its **template's `type`**. `/v1/messages` requires a `type = transactional` template; workflow `send` steps reference `marketing` templates. The service rejects the mismatch (a transactional template can't be a workflow step, and `/v1/messages` won't send a marketing template). The **audience is the explicit `to`** — no `audience` resolution, no workflow.
+- A message's class = its **template's `type`**. `/internal/messages` requires a `type = transactional` template; workflow `send` steps reference `marketing` templates. The service rejects the mismatch (a transactional template can't be a workflow step, and `/internal/messages` won't send a marketing template). The **audience is the explicit `to`** — no `audience` resolution, no workflow.
 - The caller **awaits** the result, so latency-sensitive flows (login/signup OTP) know immediately whether the mail went out.
 - `external_id` is optional: if present, the send links to (and upserts) that subscriber; if absent (e.g. **signup OTP, no account yet**) the message is logged against `to_email` with `subscriber_id` null.
 - The only gate is the **hard-bounce** suppression list — preferences, unsubscribes, and complaints are ignored so a user can never lose access to required mail. See [11-security-and-compliance](11-security-and-compliance.md).
@@ -91,12 +90,12 @@ A workflow is `(trigger_event_key)` → an ordered list of **steps**, stored as 
 ```jsonc
 // workflow: creative-studio / "no_integration_1d"
 {
-  "trigger_event_key": "creative_studio.trial_started",
+  "trigger_event_key": "trial_started",
   "category": "onboarding",
   "audience": "event_subscriber",
   "steps": [
     { "type": "delay",     "duration": "1d" },
-    { "type": "cancel_on", "event_keys": ["creative_studio.integration.connected"] },
+    { "type": "cancel_on", "event_keys": ["integration_connected"] },
     { "type": "send",      "channel": "email", "template": "no_integration_1d" }
   ]
 }
@@ -117,7 +116,7 @@ A workflow is `(trigger_event_key)` → an ordered list of **steps**, stored as 
 
 ### Trigger matching
 
-On an ingested event, the engine finds every **enabled** workflow in that product whose `trigger_event_key` equals the event's `event_key`, and starts a run for each. One event can start several workflows (e.g. `trial_started` starts both *welcome* and *no-integration-1d* and *trial-ended*).
+On an ingested event, the engine finds every **enabled** workflow in that product whose `trigger_event_key` equals the event's `event_key`, and starts a run for each. One event can start several workflows (e.g. `trial_started` starts both *welcome* and *no-integration-1d*).
 
 ## Schedule-and-cancel mechanics
 
@@ -144,10 +143,10 @@ sequenceDiagram
   participant Core as core-platform
   participant N as sd-mail-service
   participant J as Delayed job (+1d)
-  Core->>N: creative_studio.trial_started (Jane)
-  N->>N: upsert subscriber, run=active, schedule +1d job, guard=integration.connected
+  Core->>N: trial_started (org, product_slug=creative-studio)
+  N->>N: upsert subscriber, run=active, schedule +1d job, guard=integration_connected
   alt Jane connects within a day
-    Core->>N: creative_studio.integration.connected (Jane)
+    Core->>N: integration_connected (org)
     N->>N: run.status = canceled
     J-->>N: fires at +1d
     N-->>N: run not active → no-op
@@ -168,7 +167,7 @@ sequenceDiagram
   participant DB as Postgres
   participant Q as BullMQ event queue
   participant W as Workflow worker
-  P->>A: POST /v1/events (idempotency_key)
+  P->>A: POST /internal/events (idempotency_key)
   A->>DB: INSERT event_log (unique idempotency_key)
   alt duplicate
     DB-->>A: conflict
@@ -200,7 +199,7 @@ stateDiagram-v2
 
 Email #6 ("no use in 2 weeks") is a **self-re-arming timer**:
 
-1. Any `activity` (or `generation.completed`) event bumps `subscribers.last_seen_at` and **(re)schedules** the +14d inactivity send, **canceling** the previously scheduled one.
+1. Any `activity` (or `generation_completed`) event bumps `subscribers.last_seen_at` and **(re)schedules** the +14d inactivity send, **canceling** the previously scheduled one.
 2. If 14 days pass with no activity, the send fires; then the workflow re-arms for the next window (via `repeat`).
 3. A **nightly sweep** (scheduler) is a backstop: it finds subscribers with `last_seen_at < now - 14d` who have no pending inactivity run (e.g. onboarded before the feature shipped, or whose timer was never armed) and enqueues one.
 

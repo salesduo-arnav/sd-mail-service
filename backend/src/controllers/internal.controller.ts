@@ -1,9 +1,11 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { asyncHandler, badRequest } from '../utils/errors';
-import { Product } from '../models/product';
 import { Message } from '../models/message';
 import { emailDriver } from '../services/delivery/email-driver';
+import { ingestEvent, eventSchema, MAX_DATA_BYTES } from '../services/ingest.service';
+import { findProductBySlug } from '../services/product.service';
+import { messageBodySchema, sendTransactionalMessage } from '../services/message.service';
 import env from '../config/env';
 import Logger from '../utils/logger';
 
@@ -28,7 +30,10 @@ export const sendInternalEmail = asyncHandler(async (req: Request, res: Response
     const { to, subject, html, text, product_slug } = parsed.data;
     if (!html && !text) throw badRequest('html or text body required', 'validation_error');
 
-    const product = product_slug ? await Product.findOne({ where: { slug: product_slug } }) : null;
+    // A provided-but-unknown slug is a caller mistake — 404 it (like /events and
+    // /messages) rather than silently sending unbranded, untracked mail. Omitting the
+    // slug is still valid: a pre-rendered raw relay with no product attribution.
+    const product = product_slug ? await findProductBySlug(product_slug) : null;
     const from = product?.from_email ?? env.SMTP_FROM;
     const recipients = Array.isArray(to) ? to : [to];
 
@@ -60,4 +65,36 @@ export const sendInternalEmail = asyncHandler(async (req: Request, res: Response
 
     Logger.info('internal email sent', { to: recipients, subject, source: req.serviceName });
     res.json({ message: 'Email sent', source: req.serviceName });
+});
+
+const internalEventSchema = eventSchema.extend({ product_slug: z.string().min(1) });
+const internalMessageSchema = messageBodySchema.extend({ product_slug: z.string().min(1) });
+
+/**
+ * POST /internal/events — ingest a lifecycle event. Product resolved from `product_slug`,
+ * auth via the shared service key (X-Service-Key). For trusted first-party producers.
+ */
+export const postInternalEvent = asyncHandler(async (req: Request, res: Response) => {
+    const parsed = internalEventSchema.safeParse(req.body);
+    if (!parsed.success) throw badRequest('Invalid request body', 'validation_error', parsed.error.flatten());
+    const { product_slug, ...event } = parsed.data;
+    if (event.data && JSON.stringify(event.data).length > MAX_DATA_BYTES) {
+        throw badRequest('data payload too large (max 32KB)', 'payload_too_large');
+    }
+    const product = await findProductBySlug(product_slug);
+    const result = await ingestEvent(product.id, event);
+    res.status(202).json({ id: result.id, deduped: result.deduped, subscriber_id: result.subscriberId });
+});
+
+/**
+ * POST /internal/messages — send a transactional template message. Product resolved from
+ * `product_slug`, auth via the shared service key (X-Service-Key).
+ */
+export const postInternalMessage = asyncHandler(async (req: Request, res: Response) => {
+    const parsed = internalMessageSchema.safeParse(req.body);
+    if (!parsed.success) throw badRequest('Invalid request body', 'validation_error', parsed.error.flatten());
+    const { product_slug, ...body } = parsed.data;
+    const product = await findProductBySlug(product_slug);
+    const { status, body: payload } = await sendTransactionalMessage(product, body);
+    res.status(status).json(payload);
 });

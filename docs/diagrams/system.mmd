@@ -5,7 +5,7 @@ flowchart LR
     ER[early-reviews]
     AF[affiliates]
   end
-  CP & ST & ER & AF -->|POST /v1/events\nproduct API key| API[Ingest API]
+  CP & ST & ER & AF -->|POST /internal/events\nX-Service-Key + product_slug| API[Ingest API]
   API -->|dedup + persist| EL[(event_log)]
   API -->|enqueue| Q[[BullMQ: event queue]]
   Q --> WE[Workflow Engine]

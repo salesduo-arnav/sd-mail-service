@@ -1,24 +1,26 @@
 # Core-platform email migration — provisioning runbook
 
-core-platform now sends **all** its transactional email through sd-mail-service (SMTP retired, hard cutover — no fallback). This runbook provisions the sd-mail-service side. **Do this before deploying the updated core-platform**, or its OTP/reset/invite/contact emails will fail.
+core-platform now sends **all** its transactional email through sd-mail-service (SMTP retired, hard cutover — no fallback).
+
+> **One-click provisioning.** The `core-platform` product and its 5 transactional templates are created by the catalog provisioner — click **Provision catalog** in the admin UI → Products (source of truth: `backend/src/provisioning/catalog.ts`). It's idempotent and admin-triggered (nothing auto-seeds on startup), so **you do not need to create the product or author the templates by hand** and a redeploy won't touch your edits. The sections below document what gets provisioned (for reference/editing) and the **core env wiring** (§2) you still have to do before deploying, or its OTP/reset/invite/contact emails will fail.
+
+> **Scope:** this runbook covers core's **own** transactional mail (the `core-platform` product). core-platform is *also* a producer of the **Creative Studio lifecycle events** (`trial_started` / `integration_connected` / `plan_purchased`) — that setup lives in [`creative-studio-migration.md`](creative-studio-migration.md). Both use the same `SD_MAIL_SERVICE_KEY`. Ship sd-mail-service + core-platform (+ creatives) together — they're one atomic change. **To stand up the whole stack and test every flow end-to-end, follow [`run-and-test.md`](run-and-test.md).**
 
 ## 1. Create the product
 
 Admin UI (`http://localhost:5180` in dev) → **Products** → New product:
-- **Name:** `core-platform` (slug auto-derives to `core-platform` — the client sends `product_slug: core-platform` on the raw relay).
+- **Name:** `core-platform` (slug `core-platform` — the client sends `product_slug: core-platform` on every send).
 - **From email:** `"SalesDuo" <no-reply@salesduo.com>` (or the real sending identity).
 - **Reply-to email:** `support@salesduo.com`.
 - **Branding (optional):** brand name `SalesDuo`, brand color `#ff9900` (matches core's current `brand_*` config).
 
-## 2. Create the API key + wire core's env
+## 2. Wire core's env (no product API key needed)
 
-- Products → the product → **API keys** → create one. Copy it (shown once) → core's `SD_MAIL_API_KEY`.
-- Core also needs `SD_MAIL_SERVICE_KEY` = **this service's `INTERNAL_API_KEY`** (used by the `/internal/email/send` relay), and `SD_MAIL_BASE_URL` = this service's URL (`http://localhost:3110` in dev).
+Core authenticates with the **shared service key** and names the product via `product_slug: core-platform` on each request — no per-product API key to generate. The `core-platform` product just needs to exist (step 1, for branding + templates).
 
 | core env var | value |
 |---|---|
 | `SD_MAIL_BASE_URL` | sd-mail-service base URL (e.g. `http://localhost:3110`) |
-| `SD_MAIL_API_KEY` | the product API key from step 2 |
 | `SD_MAIL_SERVICE_KEY` | sd-mail-service's `INTERNAL_API_KEY` |
 
 ## 3. Author the 5 templates

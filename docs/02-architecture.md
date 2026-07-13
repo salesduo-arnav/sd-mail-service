@@ -6,8 +6,8 @@ sd-mail-service is one codebase deployed as a few process types, backed by Postg
 
 | Component | Responsibility |
 |-----------|----------------|
-| **Ingest API** | `POST /v1/events` (async, returns 202), `/v1/subscribers`, `/v1/events/activity`, provider webhooks. Authenticates product API keys, validates, deduplicates (idempotency), persists to `event_log`, enqueues. |
-| **Transactional API** | `POST /v1/messages` — **synchronous** required-mail send: renders a transactional template and delivers inline, returning a delivery result (not 202). Bypasses opt-out/unsubscribe; honors hard bounce. Availability-critical (login/signup depend on it). |
+| **Ingest API** | `POST /internal/events` (async, returns 202), provider webhooks. Authenticates the shared service key (`X-Service-Key`), resolves the product from `product_slug`, validates, deduplicates (idempotency), persists to `event_log`, enqueues. |
+| **Transactional API** | `POST /internal/messages` — **synchronous** required-mail send: renders a transactional template and delivers inline, returning a delivery result (not 202). Bypasses opt-out/unsubscribe; honors hard bounce. Availability-critical (login/signup depend on it). |
 | **Admin API** | CRUD for products, workflows, templates, subscribers, logs. Auth via superadmin sessions (single admin type, full access — no RBAC). |
 | **Workflow engine** (worker) | Consumes the event queue: upserts the subscriber, matches workflows by trigger key, creates `workflow_runs`, executes steps, schedules delayed steps, processes cancellations. |
 | **Scheduler** | BullMQ delayed/repeatable jobs. Fires delayed steps at their deadline; runs the nightly inactivity sweep. |
@@ -26,7 +26,7 @@ flowchart LR
     ER[early-reviews]
     AF[affiliates]
   end
-  CP & ST & ER & AF -->|POST /v1/events\nproduct API key| API[Ingest API]
+  CP & ST & ER & AF -->|POST /internal/events\nX-Service-Key + product_slug| API[Ingest API]
   API -->|dedup + persist| EL[(event_log)]
   API -->|enqueue| Q[[BullMQ: event queue]]
   Q --> WE[Workflow Engine]
@@ -72,7 +72,7 @@ flowchart TB
 
 ## Request/flow summary
 
-1. **Ingest** — product emits an event with an API key. API validates, dedups on `idempotency_key`, writes `event_log`, enqueues, returns `202`.
+1. **Ingest** — a producer emits an event (shared service key + `product_slug`). API validates, dedups on `idempotency_key`, writes `event_log`, enqueues, returns `202`.
 2. **Process** — worker pulls the event, upserts the subscriber, finds matching workflows, and for each spins a `workflow_run` and walks its steps.
 3. **Schedule** — `delay` steps become BullMQ delayed jobs (`run_steps` row records the scheduled instance).
 4. **Cancel** — a matching `cancel_on` event flips the run to `canceled`; scheduled jobs no-op when they fire.
@@ -86,5 +86,5 @@ Details of the event contract, step semantics, and state machines are in [04-eve
 - **Durable:** events and scheduled steps survive restarts (persisted in Postgres; jobs in Redis-backed BullMQ).
 - **Idempotent:** dedup at ingest (`idempotency_key`), one active run per (workflow, subscriber, trigger), one `message` per send.
 - **Admin-controlled:** workflow timing/conditions and template content are data, edited in the admin UI with no deploy.
-- **Multi-tenant:** every row is scoped to a `product`; product API keys are product-scoped. Admins are superadmins with full access across all products (no admin RBAC).
+- **Multi-tenant:** every row is scoped to a `product` (named per request via `product_slug`). Producers are trusted first-party services sharing one internal key; admins are superadmins with full access across all products (no admin RBAC).
 - **Multi-channel-ready:** delivery is behind a channel-driver interface; email is the only v1 driver.

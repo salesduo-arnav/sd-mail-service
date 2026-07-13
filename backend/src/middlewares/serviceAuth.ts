@@ -11,8 +11,8 @@ function safeEqual(a: string, b: string): boolean {
 
 /**
  * Internal service auth via a shared key (X-Service-Key) — the same scheme
- * core-platform uses for its /internal/* endpoints. Used by provider webhooks and
- * the forward-compat /internal/email/send endpoint.
+ * core-platform uses for its /internal/* endpoints. Guards all producer endpoints:
+ * /internal/events, /internal/messages, and /internal/email/send.
  */
 export function requireServiceAuth(req: Request, _res: Response, next: NextFunction) {
     const key = req.header('x-service-key');

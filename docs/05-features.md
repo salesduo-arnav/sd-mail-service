@@ -6,12 +6,11 @@ What sd-mail-service does, grouped by capability. The right-hand column marks **
 
 | Feature | Phase |
 |---------|-------|
-| Single idempotent `POST /v1/events` (async marketing/lifecycle) | v1 |
-| **Synchronous `POST /v1/messages` (transactional send)** — returns delivery result; targets a raw email or a subscriber | v1 |
+| Single idempotent `POST /internal/events` (async marketing/lifecycle) | v1 |
+| **Synchronous `POST /internal/messages` (transactional send)** — returns delivery result; targets a raw email or a subscriber | v1 |
 | **Message classes** — `transactional` (required mail, bypasses opt-out/unsubscribe, no footer) vs `marketing` | v1 |
-| `POST /v1/subscribers` (identify/update) | v1 |
-| `POST /v1/events/activity` (thin last-seen ping) | v1 |
-| Product-scoped API-key auth (+ optional HMAC signature) | v1 |
+| `POST /internal/email/send` (pre-rendered relay) | v1 |
+| Shared service-key auth (`X-Service-Key`) + `product_slug` — internal-only, first-party producers | v1 |
 | Async, fire-and-forget (202 + queue) for events | v1 |
 | Event replay from `event_log` | later |
 | Provider inbound webhooks (bounce/complaint) | v1 (email) |
@@ -83,7 +82,7 @@ Single **superadmin** role — full access to every product. No RBAC / per-produ
 
 | Feature | Phase |
 |---------|-------|
-| Products: branding, from/reply-to, API keys | v1 |
+| Products: branding, from/reply-to (no API keys — shared service key) | v1 |
 | Workflow editor (trigger, steps, delays, enable) | v1 |
 | Template editor (subject, body, CTAs) + preview + send-test | v1 |
 | Subscriber lookup (profile, prefs, message history) | v1 |

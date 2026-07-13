@@ -29,7 +29,7 @@ interface ChannelDriver {
 
 Both classes share the render pipeline but differ at the **send-time gate**:
 
-| Check | `marketing` (workflow/events) | `transactional` (`/v1/messages`) |
+| Check | `marketing` (workflow/events) | `transactional` (`/internal/messages`) |
 |-------|-------------------------------|----------------------------------|
 | Preference opt-out | blocks | **ignored** |
 | Suppression: unsubscribe / complaint | blocks | **ignored** |

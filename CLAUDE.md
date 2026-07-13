@@ -12,7 +12,7 @@ Two deployables in one repo: `backend/` (Express + TypeScript + Sequelize + Bull
 
 Most workflows are wrapped in the root **`Makefile`** (`make help` lists targets). Key ones:
 
-- **Full stack in Docker:** `make up` → `make seed-docker` (once, bootstraps superadmin) → `make urls`
+- **Full stack in Docker:** `make up` → `make seed-docker` (once, bootstraps superadmin) → `make urls`. The canonical products/templates/workflows are **not** seeded — provision them on demand from the admin UI (Products → **Provision catalog**), idempotently from `src/provisioning/catalog.ts`.
 - **Host dev** (infra in Docker, Node on host): `make setup` → `make infra` → then in separate terminals: `make dev-api`, `make dev-worker`, `make dev-scheduler`, `make admin`
 - **Reset local data:** `make reset` (down + wipe volumes)
 
@@ -34,7 +34,7 @@ Admin, run from `admin/`: `npm run dev` (`:5180`, proxies `/admin` → `:3110`),
 
 ### Request → event → workflow flow (the core)
 This is the "schedule-and-cancel" engine. Read these in order:
-1. **Ingest** (`src/services/ingest.service.ts`): `POST /v1/events` upserts the subscriber by `(product_id, external_id)`, writes an `event_log` row idempotently on `(product_id, idempotency_key)`, and enqueues a job (jobId = event row id, so enqueue is idempotent).
+1. **Ingest** (`src/services/ingest.service.ts`): `POST /internal/events` upserts the subscriber by `(product_id, external_id)`, writes an `event_log` row idempotently on `(product_id, idempotency_key)`, and enqueues a job (jobId = event row id, so enqueue is idempotent).
 2. **Process** (`src/services/engine/process-event.ts`): worker picks up the job. **Serialized per-subscriber via a Redis lock** (`withLock`) so concurrent same-subscriber events can't double-fire. It matches → starts runs, then cancels runs this event defuses (excluding the run it just started).
 3. **Match** (`src/services/engine/trigger-matcher.ts`): finds enabled workflows whose `trigger_event_key` matches. Dedup policy: **keep-first** (one active run per workflow+subscriber) unless the workflow's own trigger is in its `cancel_on` keys, in which case **latest-wins** (re-arms, cancels priors) — e.g. an `inactive_14d` nudge triggered by `activity` and canceled by `activity`. Also handles **out-of-order cancels** by comparing effective event time (`occurred_at ?? received_at`), not processing order.
 4. **Execute** (`src/services/engine/run-executor.ts`): walks the declarative step list. Leading (no-delay) sends deliver inline; sends after a `delay` become BullMQ **delayed jobs** (jobId = `run_step` id, so they're individually cancelable). `cancel_on` keys are aggregated onto the run row.
@@ -50,18 +50,18 @@ This is the "schedule-and-cancel" engine. Read these in order:
 It is **idempotent**: one `messages` row per `run_step` (engine) or per `(campaign, subscriber)` (campaigns); a retried job short-circuits if already `sent`/`suppressed`. Transient provider errors **throw** (BullMQ retries); on the job's final attempt the caller sets `finalAttempt` so a failure is recorded as terminal `failed` instead of hanging. Transport is abstracted in `src/services/delivery/email-driver.ts` (SMTP via Nodemailer or SES, chosen by `EMAIL_TRANSPORT`). Rendering: Liquid templates (`src/services/render/`) wrapped in the product's brand layout.
 
 ### Auth (two independent planes)
-- **Producer API** (`/v1/*`, `apiKeyAuth`): product-scoped API keys. Only the **SHA-256 hash** is stored (`api_keys.key_hash`); a leaked key's blast radius is one product. Accepts `Authorization: Bearer` or `X-Api-Key`. Sets `req.product`.
+This is an **internal-only** service — there are no per-product API keys.
+- **Producer API** (`/internal/*`, `serviceAuth`): trusted first-party producers use one shared key `X-Service-Key` (= `env.INTERNAL_API_KEY`) and name the product per request via `product_slug` in the body. Endpoints: `POST /internal/events` (async ingest), `/internal/messages` (sync transactional template send), `/internal/email/send` (pre-rendered relay). `serviceAuth` resolves the product by slug (`findProductBySlug`), not from the request identity.
 - **Admin API** (`/admin/*`, `requireAdmin`): single superadmin, **no RBAC**, full cross-product access. Signed JWT in an httpOnly cookie (`sdmail_admin`); the guard re-checks the admin still exists on every request.
-- `/internal/*` (`serviceAuth`, `INTERNAL_API_KEY`) is forward-compat for service-to-service email.
 
-Route groups mounted in `src/app.ts`: `/v1` (producers), `/admin` (control plane), `/webhooks` (provider bounce/complaint), `/` public (`GET /u/:token` unsubscribe), `/internal`. In production (or `SERVE_ADMIN=true`) the API also serves the built admin SPA from `admin/dist`.
+Route groups mounted in `src/app.ts`: `/admin` (control plane), `/webhooks` (provider bounce/complaint), `/` public (`GET /u/:token` unsubscribe), `/internal` (producers). In production (or `SERVE_ADMIN=true`) the API also serves the built admin SPA from `admin/dist`.
 
 ### Config
 `src/config/env.ts` validates **all** of `process.env` with Zod at boot and fails fast. Import the default `env` export — never read `process.env` directly. In production it additionally refuses to boot with default secrets (`*_SECRET`, `INTERNAL_API_KEY`), the default `ADMIN_PASSWORD`, or incomplete SMTP config. Reference: `backend/.env.example`.
 
 ## Conventions worth knowing
 
-- **Data model**: 14 Sequelize models in `src/models/`; all associations are declared centrally in `src/models/index.ts` (imported for side effects as `import './models'`). Everything is product-scoped. The DBML source of truth is `docs/schema.dbml`.
+- **Data model**: 13 Sequelize models in `src/models/`; all associations are declared centrally in `src/models/index.ts` (imported for side effects as `import './models'`). Everything is product-scoped. The DBML source of truth is `docs/schema.dbml`.
 - **Errors**: throw the helpers in `src/utils/errors.ts` (`unauthorized`, `notFound`, …) and wrap async handlers in `asyncHandler`; a central `errorHandler` formats the response. Don't hand-roll `res.status().json()` for errors.
 - **Migrations are authoritative** for schema — models are not auto-synced. Add a migration for any schema change.
 - **Admin UI** is shadcn/ui (Radix + Tailwind) with `@/` aliased to `admin/src/`; pages in `admin/src/pages/`, API calls via `admin/src/lib/`.

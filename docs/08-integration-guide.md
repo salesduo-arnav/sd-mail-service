@@ -1,6 +1,6 @@
 # 08 — Integration Guide (for Producers)
 
-How a product starts using sd-mail-service. The contract is deliberately tiny: **get an API key, emit events**.
+How a first-party product starts using sd-mail-service (**internal-only**). The contract is deliberately tiny: **emit events with the shared service key + a `product_slug`**. For copy-paste curl, see [`integration/http-examples.md`](integration/http-examples.md); for the concrete core/studio setup, the [`integration/*-migration.md`](integration/) runbooks.
 
 ## Usage at a glance
 
@@ -15,18 +15,17 @@ sequenceDiagram
 
   Note over Admin,Svc: One-time setup (admin UI)
   Admin->>Svc: Create product + branding (from/reply-to, layout)
-  Svc-->>Admin: Issue product API key (shown once)
   Admin->>Svc: Author workflow (trigger, delay, cancel_on, send) + template
 
   Note over Prod,Svc: Runtime — per user event (fire-and-forget)
   User->>Prod: uses the product (signs up, connects, generates…)
-  Prod->>Svc: POST /v1/events (API key, event_key, subscriber, data)
+  Prod->>Svc: POST /internal/events (X-Service-Key, product_slug, event_key, subscriber, data)
   Svc-->>Prod: 202 Accepted
   Svc->>Svc: upsert subscriber, match workflows, create run, schedule/cancel steps
 
   Note over Prod,Svc: A later counter-event can defuse a pending nudge
   User->>Prod: completes the action (e.g. connects integration)
-  Prod->>Svc: POST /v1/events (cancel_on key)
+  Prod->>Svc: POST /internal/events (cancel_on event)
   Svc->>Svc: cancel matching active runs
 
   Note over Svc,User: Delivery (at deadline, if run active + prefs allow)
@@ -38,40 +37,40 @@ sequenceDiagram
   Admin->>Svc: edit template/timing (new version) + view logs
 ```
 
-## 1. Get a product + API key
+## 1. Get a product (no API key)
 
-An sd-mail-service admin creates a `product` (branding, from/reply-to) and issues an **API key** (shown once; stored hashed). The producer stores it as a secret (`SD_MAIL_SERVICE_API_KEY`), plus the base URL (`SD_MAIL_SERVICE_URL`).
+An sd-mail-service admin creates a `product` (branding, from/reply-to). There is **no per-product API key** — this is an internal-only service, so trusted first-party producers authenticate with one shared key. The producer stores `SD_MAIL_SERVICE_KEY` (= the service's `INTERNAL_API_KEY`) and the base URL (`SD_MAIL_URL`), and names the product per request via `product_slug`.
 
 ## 2. Auth
 
-Every request carries the key:
+Every request carries the shared service key; the product is named in the body:
 
 ```
-Authorization: Bearer <SD_MAIL_SERVICE_API_KEY>
-# or
-X-Api-Key: <SD_MAIL_SERVICE_API_KEY>
+X-Service-Key: <SD_MAIL_SERVICE_KEY>
+X-Service-Name: <your-service>        # optional, for logs
 ```
 
-The key resolves to exactly one `product`; all data is scoped to it. Optional **HMAC signing** (`X-Signature: sha256=<hmac(body, secret)>`) hardens payload integrity for high-trust producers.
+`product_slug` in the request body scopes the call to a product. (The old product-key `/v1/*` API has been removed.)
 
 ## 3. Emit events
 
 ```http
-POST {SD_MAIL_SERVICE_URL}/v1/events
-Authorization: Bearer <key>
+POST {SD_MAIL_URL}/internal/events
+X-Service-Key: <SD_MAIL_SERVICE_KEY>
 Content-Type: application/json
 
 {
-  "event_key": "creative_studio.trial_started",
-  "idempotency_key": "trial:sub_abc:2026-07-07",
+  "product_slug": "creative-studio",
+  "event_key": "trial_started",
+  "idempotency_key": "trial:org_1",
   "occurred_at": "2026-07-07T10:00:00Z",
   "subscriber": {
-    "external_id": "user_uuid",
-    "email": "jane@acme.com",
+    "external_id": "org_1",
+    "email": "owner@acme.com",
     "name": "Jane Doe",
-    "attributes": { "org_id": "org_1", "org_name": "Acme", "role": "owner" }
+    "attributes": { "org_name": "Acme", "role": "owner" }
   },
-  "data": { "trial_ends_at": "2026-07-21T10:00:00Z", "upgrade_link": "https://…" }
+  "data": { "trial_ends_at": "2026-07-21T10:00:00Z" }
 }
 ```
 
@@ -81,55 +80,23 @@ Content-Type: application/json
 - Put anything a template/workflow needs into `data`.
 - Treat the call as **fire-and-forget** (don't block the user request on it).
 
-Other endpoints:
-- `POST /v1/subscribers` — identify/update a profile without triggering a workflow.
-- `POST /v1/events/activity` — thin ping: `{ "external_id": "…" }` → bumps `last_seen_at` (drives inactivity).
+There are no separate subscribers/activity endpoints — an `activity` event via `/internal/events` bumps `last_seen_at` and drives the inactivity workflow.
 
-## 4. SDKs
+## 4. Clients (plain HTTP — no SDK package)
 
-Thin wrappers over the REST API; both fire-and-forget with local retry.
+There is no published SDK; each producer has a small HTTP client that sends `X-Service-Key` + `product_slug`:
+- **core-platform (TypeScript):** `backend/src/services/sd-mail.client.ts` — `sdMailClient.emitEvent(...)` / `.sendTransactional(...)`. Lifecycle facts are emitted from `services/mail-lifecycle.ts` (co-located with the existing `internal-notifier` billing hooks + the 3 integration-connect controllers).
+- **studio / optimizer (Python):** `backend/app/services/sd_mail_client.py` + `services/creative_studio_events.py` — async httpx, swallow-and-log on failure (mirrors `SdInfraClient`).
 
-### TypeScript (core-platform)
-
-```ts
-import { SdMailService } from '@salesduo/sd-mail-service';
-const notify = new SdMailService({ url: process.env.SD_MAIL_SERVICE_URL, apiKey: process.env.SD_MAIL_SERVICE_API_KEY });
-
-// at the existing notifyTrialStarted hook:
-notify.emit('creative_studio.trial_started', {
-  idempotencyKey: `trial:${sub.id}:${sub.trial_start}`,
-  subscriber: { externalId: user.id, email: user.email, name: user.full_name,
-                attributes: { org_id: org.id, org_name: org.name, role } },
-  data: { trial_ends_at: sub.trial_end, upgrade_link, tutorial_link },
-});
-```
-
-Mirror the existing `internal-notifier` emit sites in core (`webhook.controller.ts`, `billing.controller.ts`) — the same call sites that fire `billing.trial_started` today also `notify.emit(...)`. Add an `integration.connected` emit where `IntegrationAccount.status` flips to `connected`.
-
-### Python (studio / optimizer)
-
-```python
-from sd_mail_service import SdMailService
-notify = SdMailService(url=SD_MAIL_SERVICE_URL, api_key=SD_MAIL_SERVICE_API_KEY)  # async, fire-and-forget
-
-# at a generation-complete point (where credits are already consumed):
-await notify.emit(
-    "creative_studio.generation.completed",
-    idempotency_key=f"gen:{project_id}:{run_id}",
-    subscriber={"external_id": user["id"], "email": user["email"], "name": user["full_name"]},
-    data={"asin": asin},
-)
-```
-
-Model it after the existing `SdInfraClient` / `send_notification_email` style in `app/services/platform_data.py` (async httpx client, swallow-and-log on failure).
+Events are fire-and-forget; transactional sends are awaited (below).
 
 ### Transactional send (synchronous) — for required mail
 
-For OTP, password reset, invitation, contact, and share invites the caller needs a **result** (the user is waiting, or the flow must roll back on failure). Use `POST /v1/messages` and **await** it — do not fire-and-forget.
+For OTP, password reset, invitation, contact, and share invites the caller needs a **result** (the user is waiting, or the flow must roll back on failure). Use `POST /internal/messages` and **await** it — do not fire-and-forget.
 
 ```ts
-// core-platform: sending a login OTP (replaces mailService.sendMail + loginOtpEmail)
-const res = await notify.sendTransactional({
+// core-platform: sending a login OTP (product_slug defaults to 'core-platform' in the client)
+const res = await sdMailClient.sendTransactional({
   templateKey: 'login_otp',
   to: { email: user.email, name: user.full_name, externalId: user.id },
   data: { otp, expires_minutes: 5 },
@@ -142,7 +109,7 @@ if (res.status !== 'sent') {
 
 ```ts
 // signup OTP: no account yet → omit externalId, send to a raw email
-await notify.sendTransactional({ templateKey: 'signup_otp', to: { email }, data: { otp } });
+await sdMailClient.sendTransactional({ templateKey: 'signup_otp', to: { email }, data: { otp } });
 ```
 
 Transactional sends **bypass** preferences + unsubscribe/complaint suppression (a user can't opt out of an OTP); they're blocked only by a prior **hard bounce**, which comes back as a failure the caller can surface. See [04](04-event-and-workflow-model.md#two-ways-to-send-events-marketing-vs-messages-transactional) and [11](11-security-and-compliance.md).
@@ -158,7 +125,7 @@ sequenceDiagram
 
   User->>Core: request login OTP
   Core->>Core: generate + store OTP
-  Core->>Svc: POST /v1/messages (template_key=login_otp, to.email, data.otp)
+  Core->>Svc: POST /internal/messages (product_slug, template_key=login_otp, to.email, data.otp)
   Svc->>Svc: load transactional template, render (Liquid + layout, no unsub footer)
   Svc->>Svc: suppression check — HARD BOUNCE only (ignore opt-out/unsubscribe/complaint)
   alt address hard-bounced
@@ -180,9 +147,9 @@ sequenceDiagram
 
 ## 6. Choosing event keys
 
-- Namespace: `"<product>.<event>"` (e.g. `creative_studio.integration.connected`).
+- **Fact-named** (e.g. `integration_connected`, `trial_started`) — not tool-prefixed; the **product** is supplied by `product_slug`.
 - Keep them **stable** — workflows reference them by string.
-- Emit **facts**, not intentions ("integration.connected", not "send nudge"). sd-mail-service decides what to send. This keeps timing/conditions in the service, per [ADR-0002](adr/0002-schedule-and-cancel.md).
+- Emit **facts**, not intentions (`integration_connected`, not "send nudge"). sd-mail-service decides what to send. This keeps timing/conditions in the service, per [ADR-0002](adr/0002-schedule-and-cancel.md).
 
 ## 7. Migrating an existing email
 

@@ -6,18 +6,17 @@ sequenceDiagram
 
   Note over Admin,Svc: One-time setup (admin UI)
   Admin->>Svc: Create product + branding (from/reply-to, layout)
-  Svc-->>Admin: Issue product API key (shown once)
   Admin->>Svc: Author workflow (trigger, delay, cancel_on, send) + template
 
   Note over Prod,Svc: Runtime — per user event (fire-and-forget)
   User->>Prod: uses the product (signs up, connects, generates…)
-  Prod->>Svc: POST /v1/events (API key, event_key, subscriber, data)
+  Prod->>Svc: POST /internal/events (X-Service-Key, product_slug, event_key, subscriber, data)
   Svc-->>Prod: 202 Accepted
   Svc->>Svc: upsert subscriber, match workflows, create run, schedule/cancel steps
 
   Note over Prod,Svc: A later counter-event can defuse a pending nudge
   User->>Prod: completes the action (e.g. connects integration)
-  Prod->>Svc: POST /v1/events (cancel_on key)
+  Prod->>Svc: POST /internal/events (cancel_on event)
   Svc->>Svc: cancel matching active runs
 
   Note over Svc,User: Delivery (at deadline, if run active + prefs allow)

@@ -6,7 +6,7 @@ sequenceDiagram
 
   User->>Core: request login OTP
   Core->>Core: generate + store OTP
-  Core->>Svc: POST /v1/messages (template_key=login_otp, to.email, data.otp)
+  Core->>Svc: POST /internal/messages (product_slug, template_key=login_otp, to.email, data.otp)
   Svc->>Svc: load transactional template, render (Liquid + layout, no unsub footer)
   Svc->>Svc: suppression check — HARD BOUNCE only (ignore opt-out/unsubscribe/complaint)
   alt address hard-bounced

@@ -6,9 +6,9 @@
 
 **Consumer** — same as producer, from the product's perspective (a product "consumes" the service).
 
-**Event** — a fact a product reports (`creative_studio.trial_started`). Carries an `event_key`, `idempotency_key`, a `subscriber`, and free-form `data`. Ingested into `event_log`.
+**Event** — a fact a product reports (`trial_started`). Carries an `event_key`, `idempotency_key`, a `subscriber`, and free-form `data`. Ingested into `event_log`.
 
-**`event_key`** — the namespaced identifier `"<product>.<event>"` used to match workflow triggers and cancellation keys.
+**`event_key`** — a fact name (e.g. `trial_started`, `integration_connected`) used to match workflow triggers and cancellation keys; the product comes from `product_slug`, not the key.
 
 **`idempotency_key`** — producer-chosen string, unique per product, that dedups retried events.
 
@@ -52,11 +52,11 @@
 
 **Message** — a single delivery record (`messages`): channel, provider id, status lifecycle (`queued → sent → delivered | bounced | complained | failed | suppressed`), and a `type` (transactional/marketing) + `to_email`.
 
-**Transactional message** — required / 1:1 mail (OTP, password reset, invitation, contact, share). Sent via the synchronous `POST /v1/messages` API. **Bypasses** preference opt-outs and unsubscribe/complaint suppression; blocked only by hard bounce; no unsubscribe footer. Can target a raw email with no subscriber.
+**Transactional message** — required / 1:1 mail (OTP, password reset, invitation, contact, share). Sent via the synchronous `POST /internal/messages` API. **Bypasses** preference opt-outs and unsubscribe/complaint suppression; blocked only by hard bounce; no unsubscribe footer. Can target a raw email with no subscriber.
 
 **Marketing message** — lifecycle/nudge mail produced by workflows (via events). Respects preferences and all suppressions; carries an unsubscribe footer. The default `type`.
 
-**Transactional send API** — `POST /v1/messages`: renders a named template and sends it inline, returning a delivery result (vs the async `POST /v1/events` pipeline). Used for required mail where the caller must know success/failure.
+**Transactional send API** — `POST /internal/messages`: renders a named template and sends it inline, returning a delivery result (vs the async `POST /internal/events` pipeline). Used for required mail where the caller must know success/failure.
 
 **Preference** — a subscriber's per-`(category, channel)` opt-in/out, checked at send time.
 

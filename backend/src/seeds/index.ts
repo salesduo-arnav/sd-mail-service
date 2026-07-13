@@ -7,8 +7,11 @@ import Logger from '../utils/logger';
 
 /**
  * Bootstrap: ensure a superadmin exists (from ADMIN_EMAIL / ADMIN_PASSWORD) so the
- * admin panel can be logged into. That's the ONLY thing seeded — everything else
- * (products, API keys, workflows, templates) is created by admins in the UI. Idempotent.
+ * admin panel can be logged into. That's the ONLY thing seeded. Idempotent.
+ *
+ * The canonical mail catalog (products/templates/workflows) is provisioned on demand,
+ * NOT on startup — click "Provision catalog" in the admin panel (Products page). This
+ * keeps provisioning a deliberate choice so a redeploy never re-creates anything.
  */
 async function main() {
     await connectDB();

@@ -4,8 +4,9 @@
 
 COMPOSE := docker compose
 API     := http://localhost:3110
-# Create a product + API key in the admin, then pass it: `make smoke KEY=sdm_...`
-KEY     ?=
+# Shared service key (= backend/.env INTERNAL_API_KEY) + product slug for `make smoke`.
+KEY     ?= dev-internal-api-key-change-me
+SLUG    ?= creative-studio
 
 .DEFAULT_GOAL := help
 .PHONY: help env setup up up-build infra down reset restart logs ps \
@@ -55,7 +56,7 @@ ps: ## Show container status
 migrate: ## Apply pending DB migrations (host — needs infra up + backend/.env)
 	npm --prefix backend run migrate:up
 
-seed: ## Seed superadmin + products + dev keys (host)
+seed: ## Bootstrap the superadmin (host). Catalog is provisioned on demand via the admin "Provision catalog" button.
 	npm --prefix backend run seed
 
 seed-docker: ## Seed inside the running api container (use after `make up`)
@@ -106,5 +107,5 @@ urls: ## Print the local URLs
 	@echo "Docs    -> $(API)/docs"
 	@echo "Mailhog -> http://localhost:8026"
 
-smoke: ## Fire a sample event with a product key — usage: make smoke KEY=sdm_...
-	@node -e "var k='$(KEY)';if(!k){console.error('Set KEY: make smoke KEY=<product api key from the admin>');process.exit(1)}fetch('$(API)/v1/events',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+k},body:JSON.stringify({event_key:'app.trial_started',idempotency_key:'smoke-1',subscriber:{external_id:'smoke1',email:'you@example.com'}})}).then(function(r){console.log('/v1/events: '+r.status)}).catch(function(e){console.error(e.message)})"
+smoke: ## Sanity-check the ingest path (202) with a no-op event — sends NO email. usage: make smoke [SLUG=creative-studio] [KEY=<service key>]
+	@node -e "fetch('$(API)/internal/events',{method:'POST',headers:{'Content-Type':'application/json','X-Service-Key':'$(KEY)'},body:JSON.stringify({product_slug:'$(SLUG)',event_key:'smoke.ping',idempotency_key:'smoke-1',subscriber:{external_id:'smoke_org'}})}).then(function(r){console.log('/internal/events -> '+r.status+'  (202=ok, 404=create the '+'$(SLUG)'+' product first, 401=bad key)')}).catch(function(e){console.error(e.message)})"

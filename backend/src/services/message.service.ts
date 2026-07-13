@@ -1,14 +1,14 @@
-import { Request, Response } from 'express';
 import { z } from 'zod';
-import { asyncHandler, badRequest, notFound, AppError } from '../utils/errors';
+import { AppError, badRequest, notFound } from '../utils/errors';
+import { Product } from '../models/product';
 import { Template } from '../models/template';
 import { Message } from '../models/message';
-import { upsertSubscriber } from '../services/ingest.service';
-import { sendTemplate } from '../services/delivery/send.service';
+import { upsertSubscriber } from './ingest.service';
+import { sendTemplate } from './delivery/send.service';
 import redis from '../config/redis';
 import Logger from '../utils/logger';
 
-const bodySchema = z.object({
+export const messageBodySchema = z.object({
     template_key: z.string().min(1),
     to: z.object({
         email: z.string().email(),
@@ -19,20 +19,20 @@ const bodySchema = z.object({
     reply_to: z.string().email().optional(),
     idempotency_key: z.string().min(1).optional(),
 });
+export type MessageBody = z.infer<typeof messageBodySchema>;
 
 const IDEMPOTENCY_TTL = 86_400; // 24h
 
 /**
- * POST /v1/messages — synchronous transactional send (OTP, reset, invite, share…).
- * Renders a transactional template and sends inline, returning the delivery result.
- * Bypasses preferences + unsubscribe/complaint; blocked only by hard bounce; no footer.
+ * Send a transactional template message for `product` (used by /internal/messages).
+ * Returns {status, body} for the success/replay paths; throws
+ * AppError(422) when the address is undeliverable. Bypasses preferences + suppression
+ * (blocked only by hard bounce); no unsubscribe footer.
  */
-export const postMessage = asyncHandler(async (req: Request, res: Response) => {
-    const parsed = bodySchema.safeParse(req.body);
-    if (!parsed.success) throw badRequest('Invalid request body', 'validation_error', parsed.error.flatten());
-    const body = parsed.data;
-    const product = req.product!;
-
+export async function sendTransactionalMessage(
+    product: Product,
+    body: MessageBody,
+): Promise<{ status: number; body: Record<string, unknown> }> {
     // Optional idempotency: return the prior result for a repeated key (avoids double-OTP).
     const idemKey = body.idempotency_key ? `txn:${product.id}:${body.idempotency_key}` : null;
     if (idemKey) {
@@ -40,12 +40,15 @@ export const postMessage = asyncHandler(async (req: Request, res: Response) => {
         if (priorId) {
             const prior = await Message.findByPk(priorId);
             if (prior) {
-                return res.status(prior.status === 'sent' ? 200 : 422).json({
-                    message_id: prior.id,
-                    status: prior.status,
-                    provider_message_id: prior.provider_message_id,
-                    idempotent_replay: true,
-                });
+                return {
+                    status: prior.status === 'sent' ? 200 : 422,
+                    body: {
+                        message_id: prior.id,
+                        status: prior.status,
+                        provider_message_id: prior.provider_message_id,
+                        idempotent_replay: true,
+                    },
+                };
             }
         }
     }
@@ -54,7 +57,7 @@ export const postMessage = asyncHandler(async (req: Request, res: Response) => {
     if (!template) throw notFound(`Template "${body.template_key}" not found`, 'template_not_found');
     if (template.type !== 'transactional') {
         throw badRequest(
-            `Template "${body.template_key}" is not transactional; /v1/messages requires a transactional template`,
+            `Template "${body.template_key}" is not transactional; a transactional template is required`,
             'template_not_transactional',
         );
     }
@@ -84,11 +87,14 @@ export const postMessage = asyncHandler(async (req: Request, res: Response) => {
     }
 
     if (result.delivered) {
-        return res.status(200).json({
-            message_id: result.messageId,
-            status: result.status,
-            provider_message_id: result.providerMessageId,
-        });
+        return {
+            status: 200,
+            body: {
+                message_id: result.messageId,
+                status: result.status,
+                provider_message_id: result.providerMessageId,
+            },
+        };
     }
 
     // Not delivered — surface a failure the caller can show the user.
@@ -98,4 +104,4 @@ export const postMessage = asyncHandler(async (req: Request, res: Response) => {
         status: result.status,
         reason: result.reason,
     });
-});
+}

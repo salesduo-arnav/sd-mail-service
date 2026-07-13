@@ -7,9 +7,6 @@ import {
     createProduct,
     updateProduct,
     deleteProduct,
-    createApiKey,
-    revealApiKey,
-    revokeApiKey,
 } from '../controllers/admin/products.controller';
 import {
     listWorkflows,
@@ -46,6 +43,7 @@ import {
     metrics,
 } from '../controllers/admin/logs.controller';
 import { eventCatalog, categoryCatalog } from '../controllers/admin/catalog.controller';
+import { runProvisioning } from '../controllers/admin/provisioning.controller';
 import {
     listCampaigns,
     getCampaign,
@@ -69,9 +67,6 @@ router.post('/products', createProduct);
 router.get('/products/:id', getProduct);
 router.patch('/products/:id', updateProduct);
 router.delete('/products/:id', deleteProduct);
-router.post('/products/:id/keys', createApiKey);
-router.get('/products/:id/keys/:keyId/reveal', revealApiKey);
-router.delete('/products/:id/keys/:keyId', revokeApiKey);
 
 router.get('/workflows', listWorkflows);
 router.post('/workflows', createWorkflow);
@@ -113,5 +108,8 @@ router.post('/campaigns/:id/resend', resendCampaign);
 // Catalogs for the workflow builder pickers
 router.get('/events/catalog', eventCatalog);
 router.get('/categories', categoryCatalog);
+
+// One-click (re-)provision the canonical products/templates/workflows (idempotent)
+router.post('/provisioning', runProvisioning);
 
 export default router;

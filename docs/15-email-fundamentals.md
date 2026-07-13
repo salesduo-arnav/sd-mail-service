@@ -84,7 +84,7 @@ Not all mail is equal, and the law treats them differently. This service is **cl
 | Opt-out / unsubscribe / complaint suppression | **ignored** | **honored** |
 | Hard-bounce suppression | **honored** (dead address is dead) | honored |
 | Footer / `List-Unsubscribe` | omitted | added |
-| Send mode | synchronous (`/v1/messages`) | async (queued) |
+| Send mode | synchronous (`/internal/messages`) | async (queued) |
 
 The payoff: a user who unsubscribed from marketing still receives their password reset, but no class ever mails a hard-bounced address. See [10-delivery-and-channels](10-delivery-and-channels.md) and [11-security-and-compliance](11-security-and-compliance.md).
 
@@ -135,8 +135,8 @@ Before sending events, SNS sends a one-time `SubscriptionConfirmation` containin
 
 A production mail platform, mapped to this repo:
 
-1. **Decouple producers from sending** — products emit events; the service owns templates/timing/delivery (`/v1/events` + engine).
-2. **Two send paths** — async queued (lifecycle) vs synchronous (transactional, returns result): `/v1/events` vs `/v1/messages`.
+1. **Decouple producers from sending** — products emit events; the service owns templates/timing/delivery (`/internal/events` + engine).
+2. **Two send paths** — async queued (lifecycle) vs synchronous (transactional, returns result): `/internal/events` vs `/internal/messages`.
 3. **Idempotency** so retries never double-send (unique `messages.run_step_id` / `(campaign, subscriber)`).
 4. **Safe templating** for non-engineers (Liquid; see the in-admin variable reference).
 5. **One delivery choke-point** applying the class-aware gate, render, send, record (`deliver()`).

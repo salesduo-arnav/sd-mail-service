@@ -2,6 +2,8 @@
 
 **Status:** Accepted
 
+> **Update (internal-only migration):** the endpoints referenced below moved to the internal plane — producers now use the shared service key (`X-Service-Key = INTERNAL_API_KEY`) + `product_slug` on `POST /internal/messages` (transactional) and `POST /internal/events` (async), replacing the product-key `/v1/*` API. The decision itself (two message classes, the exemption rule, no core SMTP fallback) is unchanged.
+
 ## Context
 
 sd-mail-service was designed for lifecycle/**marketing** email (event-driven, schedule-and-cancel, unsubscribable). But SalesDuo also sends **required/transactional** email that must never be blocked by an unsubscribe: login OTP, signup OTP, password reset, org invitation (which today even rolls the invite back if the mail fails), plus contact-us, the studio's share invites, and batch-complete. Today these go through core-platform's SMTP (`mail.service.ts`), and studio + sd-buybox have no SMTP of their own — they route through core's `POST /internal/email/send`.

@@ -69,7 +69,7 @@ Table subscriber_preferences {
 Table event_log {
   id uuid [pk]
   product_id uuid [ref: > products.id, not null]
-  event_key varchar [not null]              // 'creative_studio.trial_started'
+  event_key varchar [not null]              // 'trial_started'
   idempotency_key varchar [not null]
   subscriber_id uuid [ref: > subscribers.id]
   occurred_at timestamp
@@ -83,7 +83,7 @@ Table workflows {
   product_id uuid [ref: > products.id, not null]
   key varchar [not null]                    // 'no_integration_1d'
   name varchar [not null]
-  trigger_event_key varchar [not null]      // 'creative_studio.trial_started'
+  trigger_event_key varchar [not null]      // 'trial_started'
   category varchar [not null]               // for preference gating
   audience varchar [not null]               // 'event_subscriber' | 'org_owner'
   active_version_id uuid

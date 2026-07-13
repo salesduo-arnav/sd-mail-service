@@ -2,14 +2,13 @@
 
 ## Authentication & authorization
 
-- **Producers** authenticate with a **product-scoped API key** (`Authorization: Bearer` / `X-Api-Key`). Auth uses the stored **SHA-256 hash** (`api_keys.key_hash`). For admin convenience an **encrypted-at-rest copy** (`api_keys.key_encrypted`, AES-256-GCM keyed from the app secret) is also stored so a superadmin can reveal/copy the key later; a raw DB dump alone can't read it (needs the running app's secret), and rotating the app secret makes existing copies unrevealable (they still authenticate via the hash). Revoke via `revoked_at`. A leaked key's blast radius is a single product.
-- Optional **HMAC signing** of event bodies (`X-Signature`) for payload integrity.
+- **Producers** authenticate with the shared **service key** (`X-Service-Key` = `INTERNAL_API_KEY`) on `/internal/*`, and name the product per request via `product_slug`. This is an **internal-only** service (trusted first-party producers only) — there are **no per-product API keys**. Rotating the shared key cuts off all producers at once; the blast radius of a leaked key is "everything a producer can do," which is why the service is never exposed publicly.
 - **Admins** are **superadmins** — a single admin type with full access to all products (no RBAC). They authenticate with separate sessions (login or SSO/OIDC); every Admin API call requires a valid superadmin session — see [09](09-admin-ui.md).
 - **Tenancy isolation:** every table is scoped by `product_id`; no cross-product reads. This is enforced in the data-access layer, not just the UI.
 
 ## Trust boundary
 
-sd-mail-service does **not** authenticate end users. It trusts that a valid product API key implies the `external_id`, `email`, and `attributes` in an event are correct. Producers are responsible for sending accurate identities. This is the same trust model as core-platform's internal service API (`X-Service-Key`).
+sd-mail-service does **not** authenticate end users. It trusts that a producer holding the shared service key sends correct `external_id`, `email`, and `attributes`. Producers are responsible for accurate identities — the same trust model as core-platform's other internal `X-Service-Key` APIs.
 
 ## PII handling
 
@@ -22,7 +21,7 @@ sd-mail-service does **not** authenticate end users. It trusts that a valid prod
 
 - **Two message classes** (`messages.type`, `templates.type`):
   - **marketing** — lifecycle/nudge mail (workflow-driven). Carries a one-click unsubscribe link (signed token scoped to subscriber + category) + `List-Unsubscribe`; blocked by preference opt-out **and any** suppression (unsubscribe, complaint, hard bounce). Fully unsubscribable.
-  - **transactional** — required/1:1 mail (OTP, password reset, invitation, contact, share). Sent via the synchronous `/v1/messages` API. **Bypasses** preference opt-outs and unsubscribe/complaint suppression — a user must never lose access to required mail by unsubscribing or marking a prior email as spam. Blocked **only** by **hard bounce** (the address is undeliverable). **No** unsubscribe footer/`List-Unsubscribe` (a support contact line instead). This is CAN-SPAM-compliant: transactional/relationship messages are exempt from the unsubscribe requirement.
+  - **transactional** — required/1:1 mail (OTP, password reset, invitation, contact, share). Sent via the synchronous `/internal/messages` API. **Bypasses** preference opt-outs and unsubscribe/complaint suppression — a user must never lose access to required mail by unsubscribing or marking a prior email as spam. Blocked **only** by **hard bounce** (the address is undeliverable). **No** unsubscribe footer/`List-Unsubscribe` (a support contact line instead). This is CAN-SPAM-compliant: transactional/relationship messages are exempt from the unsubscribe requirement.
 - **The rule, precisely:** at send time the gate reads `type`. `marketing` → check preferences + all suppression reasons. `transactional` → ignore preferences and the `unsubscribe`/`complaint`/`manual` suppression reasons; honor only `hard_bounce`.
 - **Suppression list:** hard bounces, complaints (FBL), and unsubscribes are added to `suppressions` with a `reason`; the reason is what makes the class-aware gate possible.
 - **Sender identity:** valid `from`/`reply_to`, physical postal address in footer (CAN-SPAM), truthful subject lines. Domain auth: SPF, DKIM, DMARC.
@@ -49,9 +48,9 @@ sd-mail-service does **not** authenticate end users. It trusts that a valid prod
 
 | Threat | Mitigation |
 |--------|------------|
-| Leaked product key | Hashed storage, revoke, product-scoped blast radius |
+| Leaked service key | Rotate `INTERNAL_API_KEY`; internal-only (never public) |
 | Cross-tenant access | `product_id` scoping enforced server-side |
-| Payload tampering | Optional HMAC signing |
+| Payload tampering | TLS in transit + trusted internal network (shared service key) |
 | Spam complaints / poor deliverability | Suppression list, domain auth, one-click unsubscribe, category prefs |
 | PII exposure | Encryption, retention limits, GDPR delete |
 | Unsubscribe forgery | Signed, scoped, expiring tokens |
