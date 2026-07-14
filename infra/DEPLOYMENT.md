@@ -1,49 +1,82 @@
 # Deploying sd-mail-service
 
-The service ships as **one image** running as **three ECS services** that differ only by their container command:
+One Docker image (`backend/Dockerfile`), run as **three processes** that differ only by their command. Same pattern as core-platform / listings-optimizer.
 
-| ECS service | Command | Notes |
-|-------------|---------|-------|
-| `sd-mail-api` | `npm start` | Serves the HTTP API. **Runs `migrate:up` on start — the single migrator.** Scale to ≥2 tasks (login/OTP depend on it). |
-| `sd-mail-worker` | `node dist/worker.js` | BullMQ consumers (event + delayed sends). No migrations. Safe to scale horizontally. |
-| `sd-mail-scheduler` | `node dist/scheduler.js` | Nightly inactivity sweep (Redis-lock guarded). 1 task is enough. |
+## Services we run
 
-Only `api` migrates, so worker/scheduler never race the schema. On a fresh schema they may briefly crash-loop until `api` finishes migrating — acceptable (ECS restarts them).
+| Service | Command | Count | Notes |
+|---|---|---|---|
+| `sd-mail-api` | `npm start` | ≥2 | HTTP API + serves the admin UI. **Runs DB migrations on start** (the only migrator). OTP/reset depend on it → keep ≥2. |
+| `sd-mail-worker` | `node dist/worker.js` | ≥1 | BullMQ consumers (sends, delayed nudges). No migrations. Scale freely. |
+| `sd-mail-scheduler` | `node dist/scheduler.js` | 1 | Nightly inactivity sweep (Redis-lock guarded). One is enough. |
 
-## Prerequisites (AWS)
+Only `api` listens on a port (`3000` in-container). Worker/scheduler are queue-driven.
 
-- **ECR repo** for the image (`vars.ECR_REPOSITORY`).
-- **ECS cluster** (`vars.ECS_CLUSTER`) + three services created from the task defs below.
-- **RDS Postgres 16** and **ElastiCache/Redis** reachable from the tasks.
-- **SES** (or SMTP) for delivery; verified sending domain with SPF/DKIM/DMARC.
-- **OIDC deploy role** (`vars.AWS_ROLE_ARN`) trusted by GitHub Actions with ECR push + `ecs:UpdateService`/`DescribeServices`.
-- An ALB target group hitting `GET /health` on the `api` service; a hostname (e.g. `mail.salesduo.com`) routed to it (add an upstream to the shared gateway rather than running a gateway here).
+## What we need (infra)
 
-## CI/CD
+- **Postgres 16** — RDS in prod (the image bundles the RDS CA for SSL; `NODE_ENV=production` turns SSL on).
+- **Redis** — ElastiCache or the shared `shared-redis`. Used for BullMQ + scheduler locks.
+- **SES** (recommended) or an SMTP provider — for actual delivery. See below.
+- **ALB target** hitting `GET /health` on the api service; a hostname (e.g. `mail.salesduo.com`) routed to it.
+- **ECR repo + ECS services** (3, from `ecs-taskdef.template.json`) or a host running `docker compose`. Deploy is via `.github/workflows/ci-cd.yaml` (OIDC → ECR push → `ecs update-service --force-new-deployment`), matching the sibling repos.
 
-`.github/workflows/ci-cd.yaml` builds+pushes the image and force-new-deploys all three services, then waits for stable + verifies `/health`. `dev` → `staging` environment, `main`/`master` → `production`. Set these as **repo or environment variables/secrets**:
+> **Mailhog is dev-only.** It's the local SMTP sink (compose). **Do not run it in prod** — set `EMAIL_TRANSPORT=ses` (or real SMTP creds). That's the only email-transport difference between dev and prod.
 
-```
-AWS_REGION, AWS_ROLE_ARN, ECR_REPOSITORY, ECS_CLUSTER,
-ECS_SERVICE_API, ECS_SERVICE_WORKER, ECS_SERVICE_SCHEDULER, HEALTH_URL
-```
+## Where `.env` goes
 
-## Required runtime secrets (SSM Parameter Store / Secrets Manager)
+- **Local / docker-compose:** `backend/.env` (copy from `backend/.env.example`; `make env` does this). Compose reads it via `env_file`.
+- **Prod (ECS):** do **not** ship a `.env` — inject the vars from **AWS Secrets Manager / SSM** into the task def (see `ecs-taskdef.template.json`). `backend/.env.example` is the field list.
 
-Injected into the task defs (never baked into the image). See `backend/.env.example` for the full list. Production **must** set non-default values for (boot is refused otherwise):
+## Env fields to fill
 
-```
-ADMIN_SESSION_SECRET, HMAC_SECRET, UNSUB_SECRET, INTERNAL_API_KEY, ADMIN_PASSWORD
-PGHOST, PGPORT, PGUSER, PGPASSWORD, PGDATABASE, REDIS_URL
-EMAIL_TRANSPORT (smtp|ses) + SMTP_* or SES_REGION
-PUBLIC_URL, CORS_ORIGINS, ADMIN_EMAIL
-SERVE_ADMIN=true   # if the api should also serve the built admin SPA
-```
+| Var | Prod value |
+|---|---|
+| `NODE_ENV` | `production` |
+| `PORT` | `3000` |
+| `PUBLIC_URL` | `https://mail.salesduo.com` (builds unsubscribe links) |
+| `CORS_ORIGINS` | admin origin, e.g. `https://mail.salesduo.com` |
+| `SERVE_ADMIN` | `true` (api also serves the admin SPA) |
+| `PGHOST` `PGPORT` `PGUSER` `PGPASSWORD` `PGDATABASE` | RDS connection |
+| `REDIS_URL` (`REDIS_PASSWORD`) | ElastiCache URL |
+| `EMAIL_TRANSPORT` | `ses` (or `smtp`) |
+| `SES_REGION` | `us-east-1` |
+| `SMTP_HOST/PORT/USER/PASS` | only if `EMAIL_TRANSPORT=smtp` |
+| `SMTP_FROM` | fallback From, e.g. `"SalesDuo" <no-reply@salesduo.com>` |
+| `SES_SNS_TOPIC_ARN` | (optional) lock the feedback webhook to your topic |
+| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | superadmin login (seeded once) |
 
-## Task definitions
+## Keys/secrets to generate
 
-`ecs-taskdef.template.json` is a single parameterized template. Register three variants that differ only in `containerDefinitions[0].command` (see the table above); everything else (image, env, secrets, logging) is identical. `NODE_ENV=production` turns on the RDS SSL + secret guards automatically.
+Generate strong random values (e.g. `openssl rand -hex 32`). **Prod refuses to boot** if any of the first three keep their `dev-` default, or if `ADMIN_PASSWORD` is still `admin12345`.
 
-## Rollback
+- `INTERNAL_API_KEY` — shared service key all producers send as `X-Service-Key` (must match core-platform & listings-optimizer's `SD_MAIL_SERVICE_KEY`).
+- `ADMIN_SESSION_SECRET` — signs the admin session cookie.
+- `UNSUB_SECRET` — signs one-click unsubscribe links.
+- `ADMIN_PASSWORD` — superadmin password.
 
-`aws ecs update-service --cluster <cluster> --service <svc> --task-definition <previous-revision>` for each service, or re-run the deploy job on the previous commit. Migrations are additive; a rollback of app code does not roll back the schema (design migrations to be backward-compatible).
+No per-product API keys exist — producers auth with the one `INTERNAL_API_KEY` + `product_slug`.
+
+## Webhooks to configure
+
+**SES bounce/complaint feedback** → keeps the suppression list correct:
+
+1. Create an **SNS topic** (e.g. `ses-feedback`).
+2. Add an **HTTPS subscription** → `https://mail.salesduo.com/webhooks/ses`. The service auto-confirms the subscription (verifies the SNS signature) and processes `Bounce` (→ `hard_bounce` suppression) and `Complaint` (→ `complaint` suppression).
+3. In **SES → Configuration set / Identity → Feedback**, set Bounce + Complaint notifications to that SNS topic.
+4. (Optional) set `SES_SNS_TOPIC_ARN` to reject anything not from that topic.
+
+## Amazon SES setup (one-time)
+
+1. **Verify the sending domain** (`salesduo.com`) in SES → add the DKIM CNAME records to DNS.
+2. Add **SPF** (`v=spf1 include:amazonses.com ~all`) and a **DMARC** record.
+3. **Request production access** (move out of the SES sandbox) so you can send to any recipient.
+4. Delivery auth — pick one:
+   - **SES API (preferred):** give the ECS **task role** `ses:SendRawEmail`; no keys in env (`EMAIL_TRANSPORT=ses`, `SES_REGION` set).
+   - **SES SMTP:** create SMTP credentials in SES and set `EMAIL_TRANSPORT=smtp` + `SMTP_HOST/PORT/USER/PASS`.
+5. Confirm `SMTP_FROM` / each product's `from_email` is on the verified domain.
+
+## Deploy & rollback
+
+- **Deploy:** push to `dev` → staging, `main` → production (CI builds the image, pushes to ECR, force-new-deploys all three services, waits stable, checks `/health`).
+- **First run:** after the api is up, `POST`-seed the superadmin once (`npm run seed:prod` in the api container), then log into the admin and click **Products → Provision catalog**.
+- **Rollback:** `aws ecs update-service --service <svc> --task-definition <prev-revision>` for each service, or re-run the deploy on the previous commit. Migrations are additive — keep them backward-compatible (code rollback doesn't roll back schema).
