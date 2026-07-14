@@ -37,7 +37,7 @@ export default function AppLayout({
             {/* Sidebar */}
             <aside className="flex w-60 flex-shrink-0 flex-col border-r bg-card">
                 <div className="flex items-center gap-2 px-5 py-4 border-b">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-to-br from-[#ffa21b] to-[#ff8a1b] text-white">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-md bg-brand-gradient text-white">
                         <Mail className="h-4 w-4" />
                     </div>
                     <div className="leading-tight">

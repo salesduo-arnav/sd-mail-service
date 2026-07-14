@@ -28,16 +28,6 @@ Table products {
   updated_at timestamp
 }
 
-Table api_keys {
-  id uuid [pk]
-  product_id uuid [ref: > products.id, not null]
-  name varchar
-  key_hash varchar [not null]
-  last_used_at timestamp
-  revoked_at timestamp
-  created_at timestamp
-}
-
 Table subscribers {
   id uuid [pk]
   product_id uuid [ref: > products.id, not null]
@@ -103,13 +93,11 @@ Table templates {
   id uuid [pk]
   product_id uuid [ref: > products.id, not null]
   key varchar [not null]                    // referenced by a send step's "template"
-  type message_type [not null, default: 'marketing']  // transactional templates have workflow_id null
-  workflow_id uuid [ref: > workflows.id]
+  type message_type [not null, default: 'marketing']
   channel channel [not null, default: 'email']
   subject text
   body text
   cta jsonb
-  variables jsonb
   updated_at timestamp
   Indexes { (product_id, key) [unique] }
 }
@@ -145,6 +133,8 @@ Table messages {
   to_email varchar [not null]               // actual recipient; supports raw transactional sends + suppression key
   subscriber_id uuid [ref: > subscribers.id]  // nullable: transactional sends may have no subscriber (e.g. signup OTP)
   run_id uuid [ref: > workflow_runs.id]
+  run_step_id uuid [ref: > run_steps.id]    // idempotency anchor for scheduled sends (unique)
+  campaign_id uuid [ref: > campaigns.id]    // set for marketing-campaign sends
   template_id uuid [ref: > templates.id]
   channel channel [not null]
   provider_message_id varchar
@@ -152,7 +142,31 @@ Table messages {
   error text
   sent_at timestamp
   created_at timestamp
-  Indexes { (subscriber_id, created_at) }
+  Indexes {
+    (subscriber_id, created_at)
+    run_step_id [unique]                     // one message per scheduled step (no double-send on retry)
+    (campaign_id, subscriber_id) [unique]    // one message per campaign recipient
+  }
+}
+
+Table campaigns {
+  id uuid [pk]
+  product_id uuid [ref: > products.id, not null]
+  name varchar [not null]
+  template_id uuid [ref: > templates.id]     // a saved marketing template, or inline subject/body below
+  category varchar [not null, default: 'marketing']
+  subject text
+  body text
+  cta jsonb
+  audience jsonb                             // { all: true } — the product's whole subscriber base (v1)
+  status varchar [not null, default: 'queued']  // draft | queued | sending | sent | failed
+  total_recipients int [not null, default: 0]
+  sent_count int [not null, default: 0]
+  failed_count int [not null, default: 0]
+  suppressed_count int [not null, default: 0]
+  created_by uuid [ref: > admin_users.id]
+  created_at timestamp
+  completed_at timestamp
 }
 
 Table suppressions {
@@ -169,5 +183,6 @@ Table admin_users {
   id uuid [pk]
   email varchar [unique, not null]
   name varchar
+  password_hash varchar
   created_at timestamp
 }

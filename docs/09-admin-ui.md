@@ -10,7 +10,8 @@ There is a **single admin type — superadmin** — with full access to every pr
 |---------|----------------|
 | **Products** | Create/edit a product; set branding (name, color, logo), `from_email`, `reply_to_email`, and the branded `layout_html`. (No API keys — producers use the shared service key + `product_slug`.) |
 | **Workflows** | List per product. Create/edit a workflow: trigger event key, ordered steps (add `delay` with a duration, `cancel_on` with event keys, `send` with a template), category, audience, enable/disable. Everything is data — **no deploy**. |
-| **Templates** | Edit `subject` and `body` (Liquid + HTML), primary/secondary **CTA** blocks (label + link), and the **`type`** — `marketing` (attached to a workflow, gets an unsubscribe footer) or `transactional` (standalone, no workflow, sent via `/internal/messages`, no footer). A variable helper lists available vars (from the workflow for marketing, or the send `data` for transactional). **Live preview** renders with sample data; **Send test** delivers to the admin's own email. |
+| **Templates** | Edit `subject` and `body` (Liquid + HTML), primary/secondary **CTA** blocks (label + link), and the **`type`** — `marketing` (attached to a workflow, gets an unsubscribe footer) or `transactional` (standalone, no workflow, sent via `/internal/messages`, no footer). A variable reference lists the available Liquid variables. **Live preview** renders with sample data; **Send test** delivers to a chosen address. |
+| **Campaigns** | Send a one-off **marketing** blast to a product's whole subscriber base: pick a saved marketing template or compose subject/body/CTA inline. Shows the audience count and per-campaign sent/suppressed/failed counts; **Resend** re-runs delivery only for recipients not yet sent (idempotent per recipient). |
 | **Subscribers** | Look up a subscriber by `external_id`/email; view attributes, `last_seen_at`, preferences, and message history. Manually suppress/unsuppress. |
 | **Logs & analytics** | Event stream (ingested events), workflow runs (active/canceled/completed), messages (sent/bounced/failed), suppression list. Filter by product/subscriber/date. |
 | **Audit** | Every admin edit (who changed which workflow/template/version, when). |
@@ -40,8 +41,8 @@ Saving creates a new `workflow_version`; in-flight runs keep their pinned versio
 
 ## Guardrails
 
-- Template save validates Liquid + checks referenced variables against the workflow's declared manifest (warns on unknowns).
+- Template save validates Liquid syntax (a parse error is rejected before the template is stored).
 - Delay durations validated (`1d`, `48h`, `until:<field>`).
 - Disabling a workflow immediately stops future runs and no-ops pending ones at fire time.
-- Destructive actions (revoke key, delete workflow) are audited and confirmable.
+- Destructive actions (delete workflow/template/product) are audited and confirmable.
 - All admin edits are recorded (`workflow_versions.created_by` → `admin_users`) for an audit trail.

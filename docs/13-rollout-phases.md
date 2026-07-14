@@ -39,7 +39,7 @@ A pragmatic path from empty repo to the Creative Studio emails live, then expans
 
 **Goal:** non-engineers control everything.
 
-- Admin app: products/branding/keys, workflow editor, template editor + preview + send-test, subscribers, logs, superadmin auth ([09](09-admin-ui.md)).
+- Admin app: products/branding, workflow editor, template editor + preview + send-test, subscribers, campaigns, logs, superadmin auth ([09](09-admin-ui.md)).
 - Migrate the seeded workflows/templates to be admin-managed.
 - **Exit:** an admin edits copy/CTA/delay and toggles a workflow with no deploy; changes reflected in the next run.
 
@@ -96,5 +96,5 @@ Phase 4 can proceed in parallel with Phase 3 once the engine (Phase 2) exists. P
 - The 5 in-scope Creative Studio emails send correctly, respect cancellation, are idempotent, and are admin-editable.
 - Transactional send API works; transactional mail bypasses opt-out/unsubscribe but honors hard bounce; no unsubscribe footer on it.
 - Preferences/unsubscribe/suppression enforced for marketing.
-- Producers (core + studio) emit via SDKs; a dropped **event** never breaks a product (transactional sends surface failures to the caller).
+- Producers (core + studio) emit via their small HTTP clients; a dropped **event** never breaks a product (transactional sends surface failures to the caller).
 - Observability: logs, metrics, alerts, DLQ in place.

@@ -86,6 +86,7 @@ Single **superadmin** role — full access to every product. No RBAC / per-produ
 | Workflow editor (trigger, steps, delays, enable) | v1 |
 | Template editor (subject, body, CTAs) + preview + send-test | v1 |
 | Subscriber lookup (profile, prefs, message history) | v1 |
+| Campaigns: one-off marketing blast to a product's subscribers (+ resend) | v1 |
 | Message/event logs | v1 |
 | Superadmin auth (full access, no roles) | v1 |
 | Audit trail of admin edits | v1 |
@@ -98,12 +99,16 @@ Single **superadmin** role — full access to every product. No RBAC / per-produ
 | Idempotency at ingest/run/send | v1 |
 | Structured logs + metrics (queue depth, send rate, failures) | v1 |
 | OpenAPI spec | v1 |
-| TS SDK + Python SDK | v1 |
+| Plain-HTTP producer clients (no SDK package) | v1 |
 | Event replay tooling | later |
 
 ## v1 scope summary
 
-**Ship:** email channel, all 6 Creative Studio workflows (including abandoned-checkout), the transactional send API, admin editing, preferences/unsubscribe, SDKs for core (TS) and studio (Python).
+**Ship:** email channel, all 6 Creative Studio workflows (including abandoned-checkout), the transactional send API, marketing campaigns (one-off blasts), admin editing, preferences/unsubscribe, and small per-producer HTTP clients (core in TS, studio in Python — no published SDK package).
+
+## Campaigns (one-off marketing blasts)
+
+Beyond event-driven workflows, an admin can send a **campaign** — a single marketing email to a product's whole subscriber base — from the admin UI. Pick a saved marketing template or compose subject/body/CTA inline; the service fans out on a worker, honoring preferences + suppressions per recipient (it's marketing, so it always carries an unsubscribe footer). Each send is idempotent on `(campaign_id, subscriber)`, so **Resend** only mails recipients not yet sent. Per-campaign `sent`/`suppressed`/`failed` counts are shown as fan-out progresses. See the `campaigns` table in [03](03-data-model.md).
 
 **Migration (own phase):** move the platform's existing required/transactional emails (core OTP/reset/invite/contact, studio share/batch, sd-buybox) onto sd-mail-service and retire core's SMTP path — see [13-rollout-phases](13-rollout-phases.md#migration-of-existing-emails).
 

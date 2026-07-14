@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { Send, Plus, RefreshCw, RotateCcw } from 'lucide-react';
 import { campaignsApi, templatesApi, catalogApi } from '@/services';
 import { useProducts } from '@/contexts/ProductContext';
+import { statusVariant } from '@/lib/status';
 import type { Campaign, Template, TemplateCta } from '@/types';
 import LiquidVariablesReference from '@/components/LiquidVariablesReference';
 import CtaEditor from '@/components/CtaEditor';
@@ -37,9 +38,6 @@ const emptyDraft: Draft = {
     body: '',
     cta: null,
 };
-
-const statusVariant = (s: string) =>
-    s === 'sent' ? 'default' : s === 'failed' ? 'destructive' : 'secondary';
 
 export default function Campaigns() {
     const { productId } = useProducts();

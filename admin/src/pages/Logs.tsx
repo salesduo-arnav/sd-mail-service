@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { logsApi } from '@/services';
 import { useProducts } from '@/contexts/ProductContext';
 import { SUPPRESSION_REASON_OPTIONS } from '@/lib/options';
+import { statusVariant } from '@/lib/status';
 import type { Message, Metrics, RunStep, Suppression, WorkflowRun } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -22,13 +23,6 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 }
 
 const reasonLabel = (reason: string) => SUPPRESSION_REASON_OPTIONS.find((o) => o.value === reason)?.label ?? reason;
-
-const badgeVariant = (s: string) =>
-    s === 'sent' || s === 'delivered' || s === 'completed' || s === 'active'
-        ? 'default'
-        : s === 'suppressed' || s === 'failed' || s === 'bounced' || s === 'canceled'
-          ? 'destructive'
-          : 'secondary';
 
 export default function Logs() {
     const { productId } = useProducts();
@@ -103,13 +97,14 @@ export default function Logs() {
                                     <TableRow key={x.id}>
                                         <TableCell className="text-muted-foreground">{x.created_at.slice(0, 19)}</TableCell>
                                         <TableCell><Badge variant={x.type === 'transactional' ? 'outline' : 'secondary'}>{x.type}</Badge></TableCell>
-                                        <TableCell><Badge variant={badgeVariant(x.status)}>{x.status}</Badge></TableCell>
+                                        <TableCell><Badge variant={statusVariant(x.status)}>{x.status}</Badge></TableCell>
                                         <TableCell className="text-muted-foreground">{x.to_email}</TableCell>
                                     </TableRow>
                                 ))}
                                 {messages.length === 0 && <Empty span={4} />}
                             </TableBody>
                         </Table>
+                        <CapNote count={messages.length} />
                     </DataCard>
                 </TabsContent>
 
@@ -128,6 +123,7 @@ export default function Logs() {
                                 {events.length === 0 && <Empty span={3} />}
                             </TableBody>
                         </Table>
+                        <CapNote count={events.length} />
                     </DataCard>
                 </TabsContent>
 
@@ -139,13 +135,14 @@ export default function Logs() {
                                 {runs.map((r) => (
                                     <TableRow key={r.id} className="cursor-pointer" onClick={() => logsApi.run(r.id).then(setRunDetail)}>
                                         <TableCell className="text-muted-foreground">{r.created_at.slice(0, 19)}</TableCell>
-                                        <TableCell><Badge variant={badgeVariant(r.status)}>{r.status}</Badge></TableCell>
+                                        <TableCell><Badge variant={statusVariant(r.status)}>{r.status}</Badge></TableCell>
                                         <TableCell className="font-mono text-xs text-muted-foreground">{r.id.slice(0, 8)}…</TableCell>
                                     </TableRow>
                                 ))}
                                 {runs.length === 0 && <Empty span={3} />}
                             </TableBody>
                         </Table>
+                        <CapNote count={runs.length} />
                     </DataCard>
                 </TabsContent>
 
@@ -164,6 +161,7 @@ export default function Logs() {
                                 {suppressions.length === 0 && <Empty span={3} />}
                             </TableBody>
                         </Table>
+                        <CapNote count={suppressions.length} />
                     </DataCard>
                 </TabsContent>
             </Tabs>
@@ -175,7 +173,7 @@ export default function Logs() {
                             <SheetHeader><SheetTitle>Run {runDetail.run.id.slice(0, 8)}…</SheetTitle></SheetHeader>
                             <div className="mt-4 space-y-4">
                                 <div className="flex items-center gap-2 text-sm">
-                                    <Badge variant={badgeVariant(runDetail.run.status)}>{runDetail.run.status}</Badge>
+                                    <Badge variant={statusVariant(runDetail.run.status)}>{runDetail.run.status}</Badge>
                                     <span className="text-muted-foreground">created {runDetail.run.created_at.slice(0, 19)}</span>
                                 </div>
                                 <section>
@@ -193,7 +191,7 @@ export default function Logs() {
                                     {runDetail.messages.map((x) => (
                                         <div key={x.id} className="flex justify-between rounded-md border p-2 text-sm">
                                             <span className="text-muted-foreground">{x.to_email}</span>
-                                            <Badge variant={badgeVariant(x.status)}>{x.status}</Badge>
+                                            <Badge variant={statusVariant(x.status)}>{x.status}</Badge>
                                         </div>
                                     ))}
                                     {runDetail.messages.length === 0 && <p className="text-sm text-muted-foreground">No messages.</p>}
@@ -207,8 +205,16 @@ export default function Logs() {
     );
 }
 
+// Log tables load a single page (logsApi default limit). Flag when it's maxed out
+// so a full table doesn't read as "that's everything".
+const PAGE_LIMIT = 100;
+
 function DataCard({ children }: { children: React.ReactNode }) {
     return <div className="rounded-lg border bg-card">{children}</div>;
+}
+function CapNote({ count }: { count: number }) {
+    if (count < PAGE_LIMIT) return null;
+    return <p className="border-t px-3 py-2 text-xs text-muted-foreground">Showing the first {PAGE_LIMIT} rows.</p>;
 }
 function Empty({ span }: { span: number }) {
     return (

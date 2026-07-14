@@ -30,7 +30,7 @@ export default function Login({ onLogin }: { onLogin: (email: string) => void })
         <div className="flex h-screen items-center justify-center bg-muted/30 p-6">
             <Card className="w-full max-w-sm">
                 <CardHeader className="space-y-3 text-center">
-                    <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-lg bg-gradient-to-br from-[#ffa21b] to-[#ff8a1b] text-white">
+                    <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-lg bg-brand-gradient text-white">
                         <Mail className="h-5 w-5" />
                     </div>
                     <div>

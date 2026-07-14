@@ -4,6 +4,7 @@ import { Search, ShieldX, ShieldCheck, UserPlus } from 'lucide-react';
 import { subscribersApi } from '@/services';
 import { useProducts } from '@/contexts/ProductContext';
 import { SUPPRESSION_REASON_OPTIONS } from '@/lib/options';
+import { statusVariant } from '@/lib/status';
 import type { Message, Preference, Subscriber, Suppression, SuppressionReason } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -47,9 +48,6 @@ interface Detail {
     messages: Message[];
     suppressions: Suppression[];
 }
-
-const statusBadge = (s: string) =>
-    s === 'sent' || s === 'delivered' ? 'default' : s === 'suppressed' || s === 'failed' || s === 'bounced' ? 'destructive' : 'secondary';
 
 export default function Subscribers() {
     const { productId } = useProducts();
@@ -276,7 +274,7 @@ export default function Subscribers() {
                                                 <span className="text-muted-foreground">{m.created_at.slice(0, 19)}</span>
                                                 <div className="flex gap-1.5">
                                                     <Badge variant={m.type === 'transactional' ? 'outline' : 'secondary'}>{m.type}</Badge>
-                                                    <Badge variant={statusBadge(m.status)}>{m.status}</Badge>
+                                                    <Badge variant={statusVariant(m.status)}>{m.status}</Badge>
                                                 </div>
                                             </div>
                                         ))}

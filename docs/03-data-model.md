@@ -32,16 +32,6 @@ Table products {
   updated_at timestamp
 }
 
-Table api_keys {
-  id uuid [pk]
-  product_id uuid [ref: > products.id, not null]
-  name varchar
-  key_hash varchar [not null]               // store hash only
-  last_used_at timestamp
-  revoked_at timestamp
-  created_at timestamp
-}
-
 Table subscribers {
   id uuid [pk]
   product_id uuid [ref: > products.id, not null]
@@ -107,13 +97,11 @@ Table templates {
   id uuid [pk]
   product_id uuid [ref: > products.id, not null]
   key varchar [not null]                    // referenced by a send step's "template"
-  type message_type [not null, default: 'marketing']  // transactional templates have workflow_id null
-  workflow_id uuid [ref: > workflows.id]
+  type message_type [not null, default: 'marketing']
   channel channel [not null, default: 'email']
   subject text                              // Liquid
   body text                                 // Liquid + HTML (body only; layout wraps it)
   cta jsonb                                 // {primary:{label,url}, secondary:{label,url}}
-  variables jsonb                           // declared vars for the editor helper
   updated_at timestamp
   Indexes { (product_id, key) [unique] }
 }
@@ -149,6 +137,8 @@ Table messages {
   to_email varchar [not null]               // actual recipient; supports raw transactional sends + suppression key
   subscriber_id uuid [ref: > subscribers.id]  // nullable: transactional sends may have no subscriber (e.g. signup OTP)
   run_id uuid [ref: > workflow_runs.id]
+  run_step_id uuid [ref: > run_steps.id]    // idempotency anchor for scheduled sends (unique)
+  campaign_id uuid [ref: > campaigns.id]    // set for marketing-campaign sends
   template_id uuid [ref: > templates.id]
   channel channel [not null]
   provider_message_id varchar
@@ -156,7 +146,31 @@ Table messages {
   error text
   sent_at timestamp
   created_at timestamp
-  Indexes { (subscriber_id, created_at) }
+  Indexes {
+    (subscriber_id, created_at)
+    run_step_id [unique]                     // one message per scheduled step (no double-send on retry)
+    (campaign_id, subscriber_id) [unique]    // one message per campaign recipient
+  }
+}
+
+Table campaigns {
+  id uuid [pk]
+  product_id uuid [ref: > products.id, not null]
+  name varchar [not null]
+  template_id uuid [ref: > templates.id]     // a saved marketing template, or inline subject/body below
+  category varchar [not null, default: 'marketing']
+  subject text
+  body text
+  cta jsonb
+  audience jsonb                             // { all: true } — the product's whole subscriber base (v1)
+  status varchar [not null, default: 'queued']  // draft | queued | sending | sent | failed
+  total_recipients int [not null, default: 0]
+  sent_count int [not null, default: 0]
+  failed_count int [not null, default: 0]
+  suppressed_count int [not null, default: 0]
+  created_by uuid [ref: > admin_users.id]
+  created_at timestamp
+  completed_at timestamp
 }
 
 Table suppressions {
@@ -173,6 +187,7 @@ Table admin_users {
   id uuid [pk]
   email varchar [unique, not null]
   name varchar
+  password_hash varchar
   created_at timestamp
 }
 ```
@@ -181,40 +196,43 @@ Table admin_users {
 
 ```mermaid
 erDiagram
-  products ||--o{ api_keys : has
   products ||--o{ subscribers : has
   products ||--o{ event_log : receives
   products ||--o{ workflows : defines
   products ||--o{ templates : owns
   products ||--o{ messages : sends
+  products ||--o{ campaigns : sends
   products ||--o{ suppressions : maintains
   subscribers ||--o{ subscriber_preferences : has
   subscribers ||--o{ event_log : referenced_by
   subscribers ||--o{ workflow_runs : triggers
   subscribers |o--o{ messages : receives
   workflows ||--o{ workflow_versions : versioned_by
-  workflows ||--o{ templates : uses
   workflows ||--o{ workflow_runs : instantiated_as
   workflow_versions ||--o{ workflow_runs : pinned_by
   workflow_runs ||--o{ run_steps : schedules
   workflow_runs ||--o{ messages : produces
+  run_steps |o--o{ messages : anchors
   templates ||--o{ messages : rendered_into
+  templates ||--o{ campaigns : basis_for
+  campaigns ||--o{ messages : produces
   event_log ||--o{ workflow_runs : starts
   admin_users ||--o{ workflow_versions : authored
+  admin_users ||--o{ campaigns : created
 ```
 
 ## Table notes
 
 - **products** — one row per consuming platform. Holds branding used by the render layer (`brand_name`, `brand_color`, `logo_url`, `from_email`, `reply_to_email`, `layout_html`). Everything else is scoped by `product_id` → this is the multi-tenant boundary.
-- **api_keys** — product-scoped ingestion credentials. Only the **hash** is stored; the plaintext is shown once at creation. Rotation = create new + `revoked_at` the old. Blast radius of a leak is one product.
 - **subscribers** — the recipient profile, unique per `(product_id, external_id)`. `external_id` is the product's own user id. `attributes` (JSONB) carries anything workflows/templates need (`org_id`, `org_name`, `role`, `plan`). `last_seen_at` powers inactivity workflows. Email/name are upserted from events so producers can send thin payloads.
 - **subscriber_preferences** — per `(category, channel)` opt-in/out, applied to **marketing** messages at **send time** (not schedule time). Absence defaults to `subscribed`. **Transactional** messages skip this check entirely — required mail is never gated by preferences (see [11](11-security-and-compliance.md)).
 - **event_log** — append-only record of everything ingested. `(product_id, idempotency_key)` unique = the dedup guarantee. Enables **replay** and audit. `data` holds template variables.
 - **workflows** / **workflow_versions** — a workflow is identified by `(product_id, key)`; its behavior lives in a **versioned** `steps` JSON. `active_version_id` points at the live version. Editing produces a new version; in-flight runs pin the version they started on.
-- **templates** — content for a `send` step: `subject` + `body` (Liquid + HTML, body only — the product `layout_html` wraps it), `cta` blocks (label + url, primary/secondary), and a `variables` manifest that drives the admin editor's helper + validation. Identified by `key`, unique per `(product_id, key)` — this is the string a `send` step's `template` field resolves against (for the step's `channel`). `type` = `marketing` (workflow-driven, respects preferences/suppression, gets an unsubscribe footer) or `transactional` (required mail sent via the synchronous API, `workflow_id` null, bypasses opt-out/unsubscribe, no footer — see [04](04-event-and-workflow-model.md) and [11](11-security-and-compliance.md)).
+- **templates** — content for a `send` step: `subject` + `body` (Liquid + HTML, body only — the product `layout_html` wraps it) and `cta` blocks (label + url, primary/secondary). Identified by `key`, unique per `(product_id, key)` — this is the string a `send` step's `template` field resolves against (for the step's `channel`). `type` = `marketing` (workflow-driven, respects preferences/suppression, gets an unsubscribe footer) or `transactional` (required mail sent via the synchronous API, bypasses opt-out/unsubscribe, no footer — see [04](04-event-and-workflow-model.md) and [11](11-security-and-compliance.md)).
 - **workflow_runs** — one execution per `(workflow, subscriber, trigger event)`. `status` drives the state machine ([04](04-event-and-workflow-model.md)); `cancel_on` copies the event keys that defuse it. The `(workflow, subscriber, status)` index supports dedup and cancellation lookups.
 - **run_steps** — materializes each scheduled step so delayed jobs are queryable/auditable (which sends are pending, when). `job_id` links to the BullMQ job for cancellation.
-- **messages** — the delivery log: one per send attempt, with provider id + `status` lifecycle (`queued → sent → delivered | bounced | complained | failed | suppressed`). Powers analytics and idempotency. `type` records the class (transactional/marketing) so the send-time gate and the audit trail know which suppression/footer rules applied. `to_email` is the actual recipient address — always recorded (it's the suppression key and lets **transactional** sends target a raw email); `subscriber_id` is therefore **nullable** (a signup-OTP send has no profile yet).
+- **messages** — the delivery log: one per send attempt, with provider id + `status` lifecycle (`queued → sent → delivered | bounced | complained | failed | suppressed`). Powers analytics and idempotency. `type` records the class (transactional/marketing) so the send-time gate and the audit trail know which suppression/footer rules applied. `to_email` is the actual recipient address — always recorded (it's the suppression key and lets **transactional** sends target a raw email); `subscriber_id` is therefore **nullable** (a signup-OTP send has no profile yet). The idempotency anchors are the unique `run_step_id` (one message per scheduled send, so a retried job never double-sends) and unique `(campaign_id, subscriber_id)` (one message per campaign recipient).
+- **campaigns** — a one-off **marketing** blast to a product's whole subscriber base. References a saved marketing `template_id`, or carries inline `subject`/`body`/`cta`. Fan-out runs on a worker: `status` walks `queued → sending → sent` while `total_recipients` / `sent_count` / `failed_count` / `suppressed_count` accumulate. Delivery is per-recipient idempotent (the `(campaign_id, subscriber_id)` message index), so re-running a campaign (admin "Resend") only mails recipients not yet sent. `created_by` links the admin who launched it.
 - **suppressions** — one row per `(product_id, email, reason)` so a single address can carry several reasons at once (e.g. `unsubscribe` **and** `hard_bounce`). The send-time gate is reason-aware: **marketing** is blocked by any reason; **transactional** is blocked **only** by `hard_bounce` (undeliverable), ignoring `unsubscribe`/`complaint`/`manual`. This is what lets an unsubscribed user still receive their OTP while nobody is mailed at a dead address.
 - **admin_users** — the superadmin accounts. All admins have **full access to every product**; there is no RBAC / per-product scoping (single admin type). Referenced by `workflow_versions.created_by` for an edit audit trail. See [09](09-admin-ui.md).
 

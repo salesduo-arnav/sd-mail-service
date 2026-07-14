@@ -13,7 +13,7 @@ We want sd-mail-service to be the **single email egress** for the platform, incl
 ## Decision
 
 1. **Two message classes** (`type` on `templates` and `messages`): `marketing` (existing, workflow-driven) and `transactional` (required/1:1).
-2. **Synchronous transactional API** `POST /v1/messages` — renders a named template and sends **inline**, returning a delivery result. Can target a **raw email** (signup OTP has no account yet). This is separate from the async `POST /v1/events` pipeline.
+2. **Synchronous transactional API** `POST /internal/messages` — renders a named template and sends **inline**, returning a delivery result. Can target a **raw email** (signup OTP has no account yet). This is separate from the async `POST /internal/events` pipeline.
 3. **Exemption rule:** transactional messages **bypass** preference opt-outs and the `unsubscribe`/`complaint` suppression reasons, still **honor `hard_bounce`**, and carry **no unsubscribe footer / `List-Unsubscribe`**. Marketing keeps full preference + suppression enforcement and the footer.
 4. **Full dependency, no core SMTP fallback:** all mail code is removed from core; OTP/reset/invite depend entirely on sd-mail-service.
 5. **Migrate everything, phased:** lifecycle first, then the transactional/existing emails, then retire core's `mail.service.ts` / `email-templates.ts` / `email_subject_*` config and `/internal/email/send`; repoint studio + sd-buybox. Producer-built links (reset/invite) are passed as template `data`.

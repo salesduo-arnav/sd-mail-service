@@ -4,6 +4,7 @@ import { Plus, Pencil, Trash2, History } from 'lucide-react';
 import { workflowsApi, templatesApi, catalogApi } from '@/services';
 import { useProducts } from '@/contexts/ProductContext';
 import { slugify } from '@/lib/slugify';
+import { useDerivedSlug } from '@/hooks/use-derived-slug';
 import { AUDIENCE_OPTIONS } from '@/lib/options';
 import type { Audience, Step, Workflow, WorkflowVersion } from '@/types';
 import StepBuilder from '@/components/StepBuilder';
@@ -17,16 +18,7 @@ import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { ConfirmDelete } from '@/components/ConfirmDelete';
 
 interface Editing {
     id?: string;
@@ -57,9 +49,7 @@ export default function Workflows() {
     const [saving, setSaving] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState<Workflow | null>(null);
     const [historyFor, setHistoryFor] = useState<Workflow | null>(null);
-    // Track whether the key was hand-edited so typing a name doesn't clobber it.
-    const [keyEdited, setKeyEdited] = useState(false);
-    const [keyEditing, setKeyEditing] = useState(false);
+    const keyField = useDerivedSlug();
 
     const load = useCallback(() => {
         if (!productId) return;
@@ -71,15 +61,13 @@ export default function Workflows() {
     useEffect(load, [load]);
 
     const openNew = () => {
-        setKeyEdited(false);
-        setKeyEditing(false);
+        keyField.reset(false);
         setEditing({ ...emptyWf });
     };
 
     const openEdit = async (w: Workflow) => {
         const detail = await workflowsApi.get(w.id);
-        setKeyEdited(true);
-        setKeyEditing(false);
+        keyField.reset(true); // existing workflows keep their key
         setEditing({
             id: w.id,
             key: w.key,
@@ -92,7 +80,7 @@ export default function Workflows() {
     };
 
     const onName = (name: string) => {
-        setEditing((prev) => (prev ? { ...prev, name, key: prev.id || keyEdited ? prev.key : slugify(name) } : prev));
+        setEditing((prev) => (prev ? { ...prev, name, key: keyField.derive(name, prev.key) } : prev));
     };
 
     const save = async () => {
@@ -228,20 +216,20 @@ export default function Workflows() {
                                 <span>Key:</span>
                                 {editing.id ? (
                                     <code className="font-mono text-foreground">{editing.key}</code>
-                                ) : keyEditing ? (
+                                ) : keyField.editing ? (
                                     <Input
                                         className="h-8 max-w-xs"
                                         value={editing.key}
                                         onChange={(e) => {
-                                            setKeyEdited(true);
+                                            keyField.markEdited();
                                             setEditing({ ...editing, key: e.target.value });
                                         }}
                                     />
                                 ) : (
                                     <code className="font-mono text-foreground">{editing.key || '—'}</code>
                                 )}
-                                {!editing.id && !keyEditing && (
-                                    <button type="button" className="text-primary hover:underline" onClick={() => setKeyEditing(true)}>
+                                {!editing.id && !keyField.editing && (
+                                    <button type="button" className="text-primary hover:underline" onClick={() => keyField.setEditing(true)}>
                                         Edit
                                     </button>
                                 )}
@@ -265,18 +253,13 @@ export default function Workflows() {
 
             {historyFor && <HistoryDialog workflow={historyFor} onClose={() => setHistoryFor(null)} onChanged={load} />}
 
-            <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Delete “{deleteTarget?.key}”?</AlertDialogTitle>
-                        <AlertDialogDescription>Removes the workflow, its versions and runs. Sent messages are kept.</AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={del}>Delete</AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
+            <ConfirmDelete
+                open={!!deleteTarget}
+                onOpenChange={(o) => !o && setDeleteTarget(null)}
+                title={`Delete “${deleteTarget?.key}”?`}
+                description="Removes the workflow, its versions and runs. Sent messages are kept."
+                onConfirm={del}
+            />
         </div>
     );
 }
@@ -286,8 +269,11 @@ function HistoryDialog({ workflow, onClose, onChanged }: { workflow: Workflow; o
     const [activeId, setActiveId] = useState<string | null>(workflow.active_version_id);
     const [expanded, setExpanded] = useState<string | null>(null);
 
-    const load = () => workflowsApi.get(workflow.id).then((r) => { setVersions(r.versions); setActiveId(r.workflow.active_version_id); });
-    useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+    const load = useCallback(
+        () => workflowsApi.get(workflow.id).then((r) => { setVersions(r.versions); setActiveId(r.workflow.active_version_id); }),
+        [workflow.id],
+    );
+    useEffect(() => { load(); }, [load]);
 
     const activate = async (v: WorkflowVersion) => {
         await workflowsApi.activateVersion(workflow.id, v.id);

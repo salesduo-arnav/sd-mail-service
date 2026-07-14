@@ -2,7 +2,7 @@
 
 `sd-mail-service` is a **standalone, multi-product notification / lifecycle-messaging service** for SalesDuo. Any product — core-platform, AI Creative Studio, and platforms outside the micro-tool system (early-reviews, affiliates) — sends users **personalized, event-driven emails** (welcome, onboarding nudges, trial-ended, re-engagement) by **emitting events**. The service owns templates, scheduling, delayed/conditional nudges, delivery, preferences, and compliance. It never touches a product's database.
 
-> Status: **design docs** (pre-build). These documents are the source of truth for the architecture before implementation begins.
+> Status: **implemented.** These documents describe the architecture of the service now built in `backend/` (Express + TS + Sequelize + BullMQ) and `admin/` (React + Vite).
 
 ## How to read these docs
 
@@ -18,10 +18,10 @@ Start at **[00-overview](00-overview.md)** for the one-pager, then **[01-rationa
 | [05-features](05-features.md) | Feature catalog and v1-vs-later matrix |
 | [06-edge-cases-and-failure-modes](06-edge-cases-and-failure-modes.md) | Every tricky case and how it's handled |
 | [07-creative-studio-example](07-creative-studio-example.md) | The 6 Creative Studio emails as concrete workflows |
-| [08-integration-guide](08-integration-guide.md) | Producers: REST + TS/Python SDK, auth, idempotency |
+| [08-integration-guide](08-integration-guide.md) | Producers: plain-HTTP REST, shared-key auth, idempotency |
 | [09-admin-ui](09-admin-ui.md) | Admin surface (single superadmin, no RBAC) |
 | [10-delivery-and-channels](10-delivery-and-channels.md) | Channel drivers, email first, provider abstraction |
-| [11-security-and-compliance](11-security-and-compliance.md) | API keys, PII, unsubscribe/CAN-SPAM, suppression |
+| [11-security-and-compliance](11-security-and-compliance.md) | Shared-key auth, PII, unsubscribe/CAN-SPAM, suppression |
 | [12-observability-and-ops](12-observability-and-ops.md) | Logging, metrics, retries/DLQ, runbook, scaling |
 | [13-rollout-phases](13-rollout-phases.md) | Phased delivery + migration of existing emails |
 | [14-glossary](14-glossary.md) | Terms: subscriber, workflow, run, step, template… |

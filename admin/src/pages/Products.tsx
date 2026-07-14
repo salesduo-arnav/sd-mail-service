@@ -4,35 +4,25 @@ import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, Sparkles } from 'lucid
 import { productsApi, provisioningApi } from '@/services';
 import { useProducts } from '@/contexts/ProductContext';
 import { slugify } from '@/lib/slugify';
+import { DEFAULT_BRAND_COLOR } from '@/lib/brand';
+import { useDerivedSlug } from '@/hooks/use-derived-slug';
 import type { Product } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Field } from '@/components/ui/field';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { ConfirmDelete } from '@/components/ConfirmDelete';
 
-const empty: Partial<Product> = { slug: '', name: '', from_email: '', brand_color: '#ff9900' };
+const empty: Partial<Product> = { slug: '', name: '', from_email: '', brand_color: DEFAULT_BRAND_COLOR };
 
 export default function Products() {
     const { products, refresh } = useProducts();
     const [editing, setEditing] = useState<Partial<Product> | null>(null);
     const [saving, setSaving] = useState(false);
     const [deleteTarget, setDeleteTarget] = useState<Product | null>(null);
-    // Track whether the slug was hand-edited so typing a name doesn't clobber it.
-    const [slugEdited, setSlugEdited] = useState(false);
-    const [slugEditing, setSlugEditing] = useState(false);
+    const slug = useDerivedSlug();
     const [showBranding, setShowBranding] = useState(false);
     const [provisioning, setProvisioning] = useState(false);
 
@@ -53,14 +43,13 @@ export default function Products() {
     };
 
     const openEditor = (p?: Product) => {
-        setSlugEdited(!!p); // existing products keep their slug
-        setSlugEditing(false);
+        slug.reset(!!p); // existing products keep their slug
         setShowBranding(false);
         setEditing(p ? { ...p } : { ...empty });
     };
 
     const onName = (name: string) => {
-        setEditing((prev) => (prev ? { ...prev, name, slug: slugEdited ? prev.slug : slugify(name) } : prev));
+        setEditing((prev) => (prev ? { ...prev, name, slug: slug.derive(name, prev.slug ?? '') } : prev));
     };
 
     const save = async () => {
@@ -174,20 +163,20 @@ export default function Products() {
 
                             <div className="col-span-2 flex items-center gap-2 text-sm text-muted-foreground">
                                 <span>Slug:</span>
-                                {slugEditing ? (
+                                {slug.editing ? (
                                     <Input
                                         className="h-8 max-w-xs"
                                         value={editing.slug ?? ''}
                                         onChange={(e) => {
-                                            setSlugEdited(true);
+                                            slug.markEdited();
                                             setEditing({ ...editing, slug: e.target.value });
                                         }}
                                     />
                                 ) : (
                                     <code className="font-mono text-foreground">{editing.slug || '—'}</code>
                                 )}
-                                {!slugEditing && (
-                                    <button type="button" className="text-primary hover:underline" onClick={() => setSlugEditing(true)}>
+                                {!slug.editing && (
+                                    <button type="button" className="text-primary hover:underline" onClick={() => slug.setEditing(true)}>
                                         Edit
                                     </button>
                                 )}
@@ -210,15 +199,15 @@ export default function Products() {
                                             <Field label="Brand name (optional)" htmlFor="p-brand" info="Shown in the email footer and usable as {{ brand_name }}. Default: the product name.">
                                                 <Input id="p-brand" value={editing.brand_name ?? ''} onChange={(e) => setEditing({ ...editing, brand_name: e.target.value })} placeholder={editing.name || 'Creative Studio'} />
                                             </Field>
-                                            <Field label="Brand color (optional)" info="Colors the call-to-action buttons; usable as {{ brand_color }}. Default: #ff9900.">
+                                            <Field label="Brand color (optional)" info={`Colors the call-to-action buttons; usable as {{ brand_color }}. Default: ${DEFAULT_BRAND_COLOR}.`}>
                                                 <div className="flex gap-2">
                                                     <input
                                                         type="color"
                                                         className="h-10 w-12 rounded-md border"
-                                                        value={editing.brand_color ?? '#ff9900'}
+                                                        value={editing.brand_color ?? DEFAULT_BRAND_COLOR}
                                                         onChange={(e) => setEditing({ ...editing, brand_color: e.target.value })}
                                                     />
-                                                    <Input value={editing.brand_color ?? ''} onChange={(e) => setEditing({ ...editing, brand_color: e.target.value })} placeholder="#ff9900" />
+                                                    <Input value={editing.brand_color ?? ''} onChange={(e) => setEditing({ ...editing, brand_color: e.target.value })} placeholder={DEFAULT_BRAND_COLOR} />
                                                 </div>
                                             </Field>
                                             <Field label="Reply-to email (optional)" htmlFor="p-replyto" info="Where replies go, and the support contact shown in the footer.">
@@ -249,22 +238,13 @@ export default function Products() {
                 </DialogContent>
             </Dialog>
 
-            <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Delete “{deleteTarget?.slug}”?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                            This permanently removes the product and everything scoped to it (keys, subscribers, workflows, templates, logs).
-                        </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={del}>
-                            Delete
-                        </AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
+            <ConfirmDelete
+                open={!!deleteTarget}
+                onOpenChange={(o) => !o && setDeleteTarget(null)}
+                title={`Delete “${deleteTarget?.slug}”?`}
+                description="This permanently removes the product and everything scoped to it (subscribers, workflows, templates, logs)."
+                onConfirm={del}
+            />
         </div>
     );
 }

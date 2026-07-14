@@ -59,31 +59,31 @@ cd ../admin && npm install && npm run dev   # admin :5180 (proxies /admin → :3
 
 ### First login
 
-`npm run seed` bootstraps **only** a superadmin (from `ADMIN_EMAIL` / `ADMIN_PASSWORD`, default `admin@salesduo.com` / `admin12345`) — nothing else is seeded. Everything else is created in the admin UI:
+`npm run seed` bootstraps **only** a superadmin (from `ADMIN_EMAIL` / `ADMIN_PASSWORD`, default `admin@salesduo.com` / `admin12345`) — nothing else is seeded. Then:
 
 1. Log in at **http://localhost:5180**.
-2. **Products** → create a product (branding, from-email) and an **API key** (copy it, or reveal it later).
+2. **Products** → click **Provision catalog** to seed the canonical `core-platform` + `creative-studio` products, templates, and workflows (idempotent — safe to re-run). Or create a product by hand (branding, from-email).
 3. **Templates** → author an email; **Workflows** → build a lifecycle automation; **Campaigns** → send a marketing blast to subscribers.
-4. Point a producer at the API with that key.
+4. Point a producer at the API using the shared **`INTERNAL_API_KEY`** — auth is one service key (`X-Service-Key`), and each request names its product via `product_slug`. There are no per-product API keys.
 
 ### Try it (smoke test)
 
-Create a product + API key in the admin, then (with Mailhog open at **http://localhost:8026**):
+The service is internal-only: producers authenticate with the shared `X-Service-Key` (= `INTERNAL_API_KEY`) and name the product per request via `product_slug`. Provision the catalog (above), then — with Mailhog open at **http://localhost:8026**:
 
 ```bash
-KEY=<your product api key>
+KEY=<your INTERNAL_API_KEY>   # dev default: dev-internal-api-key-change-me
 
-# Async event (drives any workflow you built for this event_key)
-curl -X POST http://localhost:3110/v1/events \
-  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
-  -d '{"event_key":"app.trial_started","idempotency_key":"t1",
+# Async event (drives any workflow built for this event_key)
+curl -X POST http://localhost:3110/internal/events \
+  -H "X-Service-Key: $KEY" -H "Content-Type: application/json" \
+  -d '{"product_slug":"creative-studio","event_key":"trial_started","idempotency_key":"t1",
        "subscriber":{"external_id":"u1","email":"you@example.com","name":"You"}}'
 
-# Synchronous transactional send (returns the delivery result). `login_otp` must be a
-# transactional template you created in the admin.
-curl -X POST http://localhost:3110/v1/messages \
-  -H "Authorization: Bearer $KEY" -H "Content-Type: application/json" \
-  -d '{"template_key":"login_otp","to":{"email":"you@example.com","name":"You"},
+# Synchronous transactional send (returns the delivery result). `login_otp` is a
+# transactional template in the provisioned core-platform catalog.
+curl -X POST http://localhost:3110/internal/messages \
+  -H "X-Service-Key: $KEY" -H "Content-Type: application/json" \
+  -d '{"product_slug":"core-platform","template_key":"login_otp","to":{"email":"you@example.com","name":"You"},
        "data":{"otp":"123456","expires_minutes":5}}'
 ```
 

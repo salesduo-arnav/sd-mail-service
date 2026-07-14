@@ -16,16 +16,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import {
-    AlertDialog,
-    AlertDialogAction,
-    AlertDialogCancel,
-    AlertDialogContent,
-    AlertDialogDescription,
-    AlertDialogFooter,
-    AlertDialogHeader,
-    AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { ConfirmDelete } from '@/components/ConfirmDelete';
 
 type Editing = Partial<Template> & { sampleData?: string };
 
@@ -209,7 +200,7 @@ export default function Templates() {
                     <DialogFooter className="flex-wrap gap-2 sm:justify-between">
                         <div className="flex gap-2">
                             <Button variant="outline" onClick={doPreview}><Eye className="mr-1.5 h-4 w-4" /> Preview</Button>
-                            <Button variant="outline" onClick={() => setTestTo('admin@salesduo.com')} disabled={!editing?.id}><Send className="mr-1.5 h-4 w-4" /> Send test</Button>
+                            <Button variant="outline" onClick={() => setTestTo('')} disabled={!editing?.id}><Send className="mr-1.5 h-4 w-4" /> Send test</Button>
                         </div>
                         <div className="flex gap-2">
                             <Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
@@ -240,18 +231,13 @@ export default function Templates() {
                 </DialogContent>
             </Dialog>
 
-            <AlertDialog open={!!deleteTarget} onOpenChange={(o) => !o && setDeleteTarget(null)}>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                        <AlertDialogTitle>Delete “{deleteTarget?.key}”?</AlertDialogTitle>
-                        <AlertDialogDescription>Workflows that reference this template by key will fail to send until fixed.</AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={del}>Delete</AlertDialogAction>
-                    </AlertDialogFooter>
-                </AlertDialogContent>
-            </AlertDialog>
+            <ConfirmDelete
+                open={!!deleteTarget}
+                onOpenChange={(o) => !o && setDeleteTarget(null)}
+                title={`Delete “${deleteTarget?.key}”?`}
+                description="Workflows that reference this template by key will fail to send until fixed."
+                onConfirm={del}
+            />
         </div>
     );
 }

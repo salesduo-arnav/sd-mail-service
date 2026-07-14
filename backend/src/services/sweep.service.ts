@@ -1,4 +1,5 @@
 import { Op, literal } from 'sequelize';
+import sequelize from '../config/db';
 import { Workflow } from '../models/workflow';
 import { WorkflowVersion } from '../models/workflow_version';
 import { Subscriber } from '../models/subscriber';
@@ -44,9 +45,9 @@ export async function runInactivitySweep(): Promise<number> {
         // workflow (replaces the per-subscriber count). Drains in pages — each armed
         // subscriber gains an active run and is excluded from the next page.
         let workflowArmed = 0;
-        // wf.id is a trusted DB UUID (not user input) — safe to inline in the subquery.
+        // wf.id is escaped (not string-interpolated) so the subquery is injection-safe.
         const noActiveRun = literal(
-            `NOT EXISTS (SELECT 1 FROM workflow_runs r WHERE r.subscriber_id = "Subscriber"."id" AND r.workflow_id = '${wf.id}' AND r.status = 'active')`,
+            `NOT EXISTS (SELECT 1 FROM workflow_runs r WHERE r.subscriber_id = "Subscriber"."id" AND r.workflow_id = ${sequelize.escape(wf.id)} AND r.status = 'active')`,
         );
         for (;;) {
             const subs = await Subscriber.findAll({

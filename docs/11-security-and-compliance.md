@@ -42,7 +42,7 @@ sd-mail-service does **not** authenticate end users. It trusts that a producer h
 ## Secrets & config
 
 - SMTP/SES creds, HMAC secrets, DB/Redis URLs via environment/secret manager — never in code or the DB.
-- Signing secrets rotatable; API keys rotatable per product.
+- Signing secrets (session/unsubscribe) and the shared `INTERNAL_API_KEY` are rotatable; rotating the shared key cuts off all producers at once (internal-only, never public).
 
 ## Threats & mitigations (summary)
 

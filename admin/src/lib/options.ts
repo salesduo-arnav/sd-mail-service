@@ -7,9 +7,6 @@ export interface Option<T extends string = string> {
     description?: string;
 }
 
-// Sentinel for "no selection" in a Radix Select (which cannot use an empty-string value).
-export const NONE_VALUE = '__none__';
-
 export const MESSAGE_TYPE_OPTIONS: Option<MessageType>[] = [
     { value: 'marketing', label: 'Marketing', description: 'Honors opt-outs and adds an unsubscribe footer.' },
     { value: 'transactional', label: 'Transactional', description: 'Always delivered (OTP, receipts); no footer.' },

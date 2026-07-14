@@ -143,7 +143,7 @@ sequenceDiagram
 ## 5. Idempotency & retries
 
 - Producer retries with the **same** `idempotency_key` are safe — sd-mail-service dedups at ingest.
-- SDKs retry transient failures locally with backoff; on exhaustion they log/DLQ. A dropped event degrades to "no nudge," never a product-facing error.
+- Producer clients retry transient failures locally with backoff; on exhaustion they log/DLQ. A dropped event degrades to "no nudge," never a product-facing error.
 
 ## 6. Choosing event keys
 

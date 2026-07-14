@@ -85,7 +85,7 @@ Every non-obvious case, with the intended handling. Grouped by area.
 
 | Case | Handling |
 |------|----------|
-| **sd-mail-service is down when a product emits** | Producer SDKs treat emits as fire-and-forget with local retry/short DLQ; a missed event degrades to "no nudge," never a user-facing failure in the product. |
+| **sd-mail-service is down when a product emits** | Producer HTTP clients treat emits as fire-and-forget with local retry/short DLQ; a missed event degrades to "no nudge," never a user-facing failure in the product. |
 | **Producer double-emits** | Idempotency at ingest makes this safe. |
 | **Producer sends stale data** | The event's `data`/subscriber attributes are used as-is at render; producers should send current values. For account-level facts that can change (e.g. plan), the cancel-on model (e.g. `plan.purchased` cancels trial-ended) keeps outcomes correct. |
 

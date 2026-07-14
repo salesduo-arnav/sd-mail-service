@@ -1,8 +1,8 @@
 # 14 — Glossary
 
-**Product** — a consuming platform (core-platform, creative-studio, early-reviews, affiliates). The multi-tenant boundary: every row is scoped to a product. Holds branding + API keys.
+**Product** — a consuming platform (core-platform, creative-studio, early-reviews, affiliates). The multi-tenant boundary: every row is scoped to a product. Holds branding (name, color, logo, from/reply-to, layout).
 
-**Producer** — code in a product that emits events to sd-mail-service (via SDK or REST). Producers emit *facts*, not send instructions.
+**Producer** — code in a product that emits events to sd-mail-service over plain HTTP (shared `X-Service-Key` + `product_slug`). Producers emit *facts*, not send instructions.
 
 **Consumer** — same as producer, from the product's perspective (a product "consumes" the service).
 

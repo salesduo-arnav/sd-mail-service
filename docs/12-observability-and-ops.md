@@ -53,9 +53,9 @@ Alerts: queue lag over threshold, delivery failure spike, bounce/complaint rate 
 
 ## Environments
 
-- `dev` (local docker: Postgres + Redis + Ethereal SMTP), `staging`, `prod`. Same process topology; SES in staging/prod, Ethereal in dev for safe inspection.
+- `dev` (local docker: Postgres + Redis + Mailhog SMTP), `staging`, `prod`. Same process topology; SES in staging/prod, Mailhog in dev for safe inspection.
 - CI/CD mirrors sibling repos' GitHub Actions; migrations run on deploy.
 
 ## Testing hooks (for build)
 
-Each edge case in [06](06-edge-cases-and-failure-modes.md) maps to a test. Local E2E: set a workflow delay to seconds, emit the trigger, confirm send in Ethereal, emit the cancel and confirm no-op, emit a duplicate and confirm single send.
+Each edge case in [06](06-edge-cases-and-failure-modes.md) maps to a test. Local E2E: set a workflow delay to seconds, emit the trigger, confirm send in Mailhog, emit the cancel and confirm no-op, emit a duplicate and confirm single send.
