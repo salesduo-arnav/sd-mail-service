@@ -16,7 +16,7 @@ This maps the six requested Creative Studio lifecycle emails onto concrete sd-ma
 | `activity` | studio | Any meaningful use (bumps `last_seen_at`) |
 | `plan_purchased` | core-platform | Trial converts to paid |
 | `trial_ended` | core-platform | A trial ends **without** converting (subscription-deleted webhook — auto period-end or manual cancel) |
-| `checkout.initiated` / `checkout.completed` | core-platform billing | **Phase 2** — user clicks pay CTA / completes payment |
+| `checkout.initiated` / `checkout.completed` | core-platform billing | a plan Checkout Session is created / the checkout completes (Stripe) |
 
 Recipient rules (per the locked decision): onboarding nudges → **the event's subscriber (the user)**; account-level nudges (trial ended, abandoned checkout) → **org owner** (resolved from `subscriber.attributes.org_*` or a dedicated owner subscriber).
 
@@ -124,11 +124,29 @@ sequenceDiagram
 
 ---
 
-## 4. Abandoned checkout after 1 day — **Phase 2**
+## 4. Abandoned checkout after 1 day
 
 - **Workflow** `abandoned_checkout_1d` · trigger `checkout.initiated` · category `billing` · audience `org_owner`
 - **Steps:** `delay 1d` → `cancel_on checkout.completed` → `send`
-- **Requires** a new producer hook in core billing to emit `checkout.initiated` at Stripe Checkout Session creation and `checkout.completed` on success. Content is admin-configurable (TBD copy). Deferred so the engine isn't blocked on billing changes.
+- **Producer:** core billing emits `checkout.initiated` when a plan Checkout Session is created (plan checkouts only) and `checkout.completed` from the checkout-completed subscription webhook. Both are keyed by the Stripe session id. If the user finishes checkout within the day, `checkout.completed` cancels the nudge.
+
+```jsonc
+{ "trigger_event_key": "checkout.initiated",
+  "steps": [
+    { "type": "delay", "duration": "1d" },
+    { "type": "cancel_on", "event_keys": ["checkout.completed"] },
+    { "type": "send", "channel": "email", "template": "abandoned_checkout_1d" } ] }
+```
+
+- **CTA:** primary → complete-checkout link ("Complete checkout")
+- **Body (seed):**
+
+> Hi {{ first_name }},
+>
+> You're one step away from unlocking AI Creative Studio. Complete your checkout to start creating Amazon-ready creatives, premium A+ content and SEO/AEO listing content.
+>
+> Best,
+> Team SalesDuo
 
 ---
 
@@ -199,7 +217,7 @@ flowchart LR
 
 ## What the producers must add
 
-- **core-platform:** emit `trial_started` (at the existing `notifyTrialStarted` hook), `integration_connected` (when an `IntegrationAccount` becomes connected), `plan_purchased`. Phase 2: `checkout.initiated`/`checkout.completed`.
+- **core-platform:** emit `trial_started` (at the existing `notifyTrialStarted` hook), `integration_connected` (when an `IntegrationAccount` becomes connected), `plan_purchased`, `trial_ended`, and `checkout.initiated`/`checkout.completed` (at Stripe Checkout Session creation / the checkout-completed webhook).
 - **studio:** emit `generation_completed` and/or `activity` at generation flows (where credits are already consumed).
 
 Everything else — timing, copy, CTAs, recipients, enable/disable — is admin-editable data in sd-mail-service. Adding a 7th email later means authoring a workflow + template; no product code changes unless a brand-new event source is needed.

@@ -47,7 +47,7 @@ A pragmatic path from empty repo to the Creative Studio emails live, then expans
 
 **Goal:** breadth.
 
-- **Abandoned checkout (#4):** add `checkout.initiated`/`checkout.completed` hooks at Stripe Checkout Session creation in core billing; author the workflow.
+- **Abandoned checkout (#4):** ✅ **done** — core billing emits `checkout.initiated` at Stripe Checkout Session creation and `checkout.completed` from the checkout-completed webhook; the `abandoned_checkout_1d` workflow + template are provisioned and enabled.
 - **Onboard new products:** early-reviews, affiliates — create products, keys, workflows; they emit events. No engine changes.
 - **Add channels:** Slack / in-app / SMS drivers behind the existing `send` step.
 - **Nice-to-haves:** hosted preference center, event replay tooling, per-subscriber timezone send windows.

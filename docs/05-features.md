@@ -103,7 +103,7 @@ Single **superadmin** role — full access to every product. No RBAC / per-produ
 
 ## v1 scope summary
 
-**Ship:** email channel, the 6 Creative Studio workflows (5 initially, abandoned-checkout in Phase 2), the transactional send API, admin editing, preferences/unsubscribe, SDKs for core (TS) and studio (Python).
+**Ship:** email channel, all 6 Creative Studio workflows (including abandoned-checkout), the transactional send API, admin editing, preferences/unsubscribe, SDKs for core (TS) and studio (Python).
 
 **Migration (own phase):** move the platform's existing required/transactional emails (core OTP/reset/invite/contact, studio share/batch, sd-buybox) onto sd-mail-service and retire core's SMTP path — see [13-rollout-phases](13-rollout-phases.md#migration-of-existing-emails).
 

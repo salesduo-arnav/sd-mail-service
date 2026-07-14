@@ -19,7 +19,7 @@ The six lifecycle scenarios and their seed copy are in [`../07-creative-studio-e
 | `trial_ended` | core-platform | a trial ended **without** converting (auto period-end OR manual cancel — the subscription-deleted webhook), routed to the plan's tool product | org |
 | `generation_completed` | creatives | creative project finalize + SEO bulk dispatch | org (thin) |
 | `activity` | creatives | any authenticated org request (throttled once/org/day) | org (thin) |
-| `checkout.initiated` / `.completed` | core-platform | **Phase 2** | org |
+| `checkout.initiated` / `.completed` | core-platform | plan checkout created / completed (Stripe) | org |
 
 > **Required integrations (must configure in core):** `integration_connected` fires for a tool only once the org has connected that tool's `Tool.required_integrations`. **In core, set the `creative-studio` tool's `required_integrations` to `['sp_api']`** (`sp_api` = Seller **or** Vendor Central) — via the core admin Tools screen or `PATCH /admin/tools/:id { required_integrations: ['sp_api'] }`. If it's empty, `integration_connected` never fires and the no-integration nudge can't be satisfied. Connecting an integration the tool doesn't need won't cancel the nudge; if the requirement is already met at trial start, core emits `integration_connected` immediately.
 >
@@ -80,7 +80,7 @@ Migrated from the creatives inline HTML. Bodies are wrapped-content (the product
 
 ## 4. Author the 6 marketing templates (type `marketing`)
 
-Keys, subjects, bodies and CTAs are in [`../07-creative-studio-example.md`](../07-creative-studio-example.md) §1–6: `welcome`, `no_integration_1d`, `no_generation_2d`, `trial_ended`, `inactive_14d`, and (Phase 2) `abandoned_checkout_1d`. Author each with that seed copy. (Ignore the `creative_studio.*` event names in that doc — use the fact-named triggers in §5 below.)
+Keys, subjects, bodies and CTAs are in [`../07-creative-studio-example.md`](../07-creative-studio-example.md) §1–6: `welcome`, `no_integration_1d`, `no_generation_2d`, `trial_ended`, `inactive_14d`, and `abandoned_checkout_1d`. Author each with that seed copy. (Ignore the `creative_studio.*` event names in that doc — use the fact-named triggers in §5 below.)
 
 **CTA links are literal URLs, entered directly in each template's CTA fields** (e.g. `https://creatives.salesduo.com/app/optimize`, the tutorial URL, `https://app.salesduo.com/billing`) — NOT `{{ data.* }}`. They're static per environment, so this dev product uses dev URLs and prod uses prod URLs. The lifecycle nudges carry no dynamic template data — the tool context comes from the `product_slug`.
 
@@ -95,7 +95,7 @@ Workflows → New, under `creative-studio`, using **fact-named** trigger/cancel 
 | `no_generation_2d` | `integration_connected` | `delay 2d` → `cancel_on [generation_completed]` → `send` | ✅ |
 | `trial_ended` | `trial_ended` | `send` (event-driven — core emits `trial_ended` when the trial actually ends; no timer/cancel) | ✅ |
 | `inactive_14d` | `activity` | `delay 14d` → `cancel_on [activity]` → `send` → `repeat` | ✅ |
-| `abandoned_checkout_1d` | `checkout.initiated` | `delay 1d` → `cancel_on [checkout.completed]` → `send` | ⛔ Phase 2 |
+| `abandoned_checkout_1d` | `checkout.initiated` | `delay 1d` → `cancel_on [checkout.completed]` → `send` | ✅ |
 
 ## 6. Data contract (reference)
 

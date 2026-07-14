@@ -73,9 +73,9 @@ Scheduled with delays — see **Testing delays** to avoid waiting days. Emitter 
 | `no_generation_2d` | `integration_connected` (core) | `generation_completed` (creatives — run a generation) |
 | `trial_ended` (immediate) | `trial_ended` (core — a trial ends without converting; cancel a trial) | — (event-driven, no cancel) |
 | `inactive_14d` | `activity` (creatives — any authed request) | `activity` (re-arms) |
-| `abandoned_checkout_1d` | `checkout.initiated` (core) | Phase 2 — **deferred** |
+| `abandoned_checkout_1d` | `checkout.initiated` (core — start a plan checkout) | `checkout.completed` (core — finish checkout) |
 
-> Producer split: **core** emits `trial_started` / `integration_connected` / `plan_purchased` / `trial_ended`; **creatives** emits `generation_completed` / `activity`. All are org-keyed (`external_id = org_id`).
+> Producer split: **core** emits `trial_started` / `integration_connected` / `plan_purchased` / `trial_ended` / `checkout.initiated` / `checkout.completed`; **creatives** emits `generation_completed` / `activity`. All are org-keyed (`external_id = org_id`).
 
 ## Testing delays (don't wait days)
 
