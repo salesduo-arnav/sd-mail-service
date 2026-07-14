@@ -72,13 +72,20 @@ async function suppressForFeedback(feedback: SesFeedback): Promise<void> {
 
     for (const email of feedback.emails) {
         const productIds = new Set<string>();
-        if (matched) productIds.add(matched.product_id);
-        const recent = await Message.findAll({
-            where: { to_email: email, created_at: { [Op.gte]: since30d } },
-            attributes: ['product_id'],
-            group: ['product_id'],
-        });
-        recent.forEach((m) => productIds.add(m.product_id));
+        // Prefer the originating product (matched by SES message id) so a complaint about
+        // one product's mail doesn't suppress unrelated products. Only when we can't tie
+        // the feedback to a specific send do we fall back to every product that recently
+        // mailed the address (so a dead address is still suppressed).
+        if (matched && matched.to_email === email) {
+            productIds.add(matched.product_id);
+        } else {
+            const recent = await Message.findAll({
+                where: { to_email: email, created_at: { [Op.gte]: since30d } },
+                attributes: ['product_id'],
+                group: ['product_id'],
+            });
+            recent.forEach((m) => productIds.add(m.product_id));
+        }
 
         if (!productIds.size) {
             Logger.warn('SES feedback: no product for address — skipped', { email, reason: feedback.reason });
@@ -105,8 +112,13 @@ export const postSesFeedback = asyncHandler(async (req: Request, res: Response) 
         throw badRequest('Invalid SNS payload', 'invalid_sns_payload');
     }
 
-    if (env.SES_SNS_TOPIC_ARN && msg.TopicArn !== env.SES_SNS_TOPIC_ARN) {
-        throw forbidden('Unexpected SNS topic', 'sns_topic_mismatch');
+    // The topic ARN is the only tenancy control on this endpoint — a valid SNS signature
+    // just proves *some* AWS account signed the envelope, not that it's our topic. Without
+    // an allowlisted ARN, a third party could subscribe our public endpoint to their own
+    // topic and forge bounce/complaint suppressions (blocking a victim's mail). So require
+    // a configured, matching ARN; boot-time env guard makes it mandatory in prod+SES.
+    if (!env.SES_SNS_TOPIC_ARN || msg.TopicArn !== env.SES_SNS_TOPIC_ARN) {
+        throw forbidden('Unexpected or unconfigured SNS topic', 'sns_topic_mismatch');
     }
     if (!(await verifySnsSignature(msg))) {
         throw forbidden('Invalid SNS signature', 'invalid_sns_signature');

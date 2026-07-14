@@ -46,7 +46,8 @@ const schema = z.object({
     SMTP_PASS: z.string().optional(),
     SMTP_FROM: z.string().default('"SalesDuo" <no-reply@salesduo.com>'),
     SES_REGION: z.string().default('us-east-1'),
-    // Optional allowlist: only accept SNS feedback from this topic ARN (recommended in prod).
+    // Allowlist the SNS topic the feedback webhook trusts. Required in production when
+    // EMAIL_TRANSPORT=ses (enforced below) — it's the endpoint's only tenancy control.
     SES_SNS_TOPIC_ARN: z.string().optional(),
 
     // Default superadmin (seeded). Change in production.
@@ -88,6 +89,13 @@ if (isProduction) {
     }
     if (env.EMAIL_TRANSPORT === 'smtp' && (!env.SMTP_HOST || !env.SMTP_USER || !env.SMTP_PASS)) {
         console.error('SMTP_HOST, SMTP_USER, SMTP_PASS are required in production when EMAIL_TRANSPORT=smtp.');
+        process.exit(1);
+    }
+    // The SES feedback webhook trusts only its topic ARN (a valid SNS signature alone
+    // isn't enough — see webhooks.controller). Require it so bounces/complaints can't be
+    // forged by a third-party SNS topic.
+    if (env.EMAIL_TRANSPORT === 'ses' && !env.SES_SNS_TOPIC_ARN) {
+        console.error('SES_SNS_TOPIC_ARN is required in production when EMAIL_TRANSPORT=ses.');
         process.exit(1);
     }
 }

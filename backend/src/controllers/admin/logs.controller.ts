@@ -13,7 +13,8 @@ function scope(req: Request): Record<string, unknown> {
     if (req.query.product_id) where.product_id = req.query.product_id;
     return where;
 }
-const limit = (req: Request) => Math.min(Number(req.query.limit) || 100, 500);
+// Clamp to [1, 500] so a client-supplied negative/zero `limit` can't reach Postgres.
+const limit = (req: Request) => Math.min(Math.max(Math.trunc(Number(req.query.limit) || 100), 1), 500);
 
 export const listEvents = asyncHandler(async (req: Request, res: Response) => {
     const rows = await EventLog.findAll({ where: scope(req), order: [['received_at', 'DESC']], limit: limit(req) });

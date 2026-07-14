@@ -42,7 +42,7 @@ Only `api` listens on a port (`3000` in-container). Worker/scheduler are queue-d
 | `SES_REGION` | `us-east-1` |
 | `SMTP_HOST/PORT/USER/PASS` | only if `EMAIL_TRANSPORT=smtp` |
 | `SMTP_FROM` | fallback From, e.g. `"SalesDuo" <no-reply@salesduo.com>` |
-| `SES_SNS_TOPIC_ARN` | (optional) lock the feedback webhook to your topic |
+| `SES_SNS_TOPIC_ARN` | **required when `EMAIL_TRANSPORT=ses`** — locks the feedback webhook to your topic |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` | superadmin login (seeded once) |
 
 ## Keys/secrets to generate
@@ -61,9 +61,9 @@ No per-product API keys exist — producers auth with the one `INTERNAL_API_KEY`
 **SES bounce/complaint feedback** → keeps the suppression list correct:
 
 1. Create an **SNS topic** (e.g. `ses-feedback`).
-2. Add an **HTTPS subscription** → `https://mail.salesduo.com/webhooks/ses`. The service auto-confirms the subscription (verifies the SNS signature) and processes `Bounce` (→ `hard_bounce` suppression) and `Complaint` (→ `complaint` suppression).
-3. In **SES → Configuration set / Identity → Feedback**, set Bounce + Complaint notifications to that SNS topic.
-4. (Optional) set `SES_SNS_TOPIC_ARN` to reject anything not from that topic.
+2. Set **`SES_SNS_TOPIC_ARN`** to that topic's ARN. This is **required** (the service refuses to boot with `EMAIL_TRANSPORT=ses` without it) and rejects any SNS message not from this topic — the signature alone only proves *some* AWS account signed it.
+3. Add an **HTTPS subscription** → `https://mail.salesduo.com/webhooks/ses`. The service auto-confirms the subscription (SNS signature + topic ARN) and processes `Bounce` (→ `hard_bounce` suppression) and `Complaint` (→ `complaint` suppression).
+4. In **SES → Configuration set / Identity → Feedback**, set Bounce + Complaint notifications to that SNS topic.
 
 ## Amazon SES setup (one-time)
 

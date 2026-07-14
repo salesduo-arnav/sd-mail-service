@@ -9,7 +9,22 @@ export async function cancelRun(run: WorkflowRun, cause: string): Promise<void> 
     if (run.status !== 'active') return;
     await run.update({ status: 'canceled', completed_at: new Date() });
     const steps = await RunStep.findAll({ where: { run_id: run.id, executed_at: null, job_id: { [Op.ne]: null } } });
-    for (const s of steps) if (s.job_id) await removeDelayedJob(s.job_id);
+    // Best-effort: the run is already canceled in the DB, and fireRunStep no-ops a
+    // non-active run at fire time. So a transient Redis error removing a delayed job must
+    // NOT throw here — otherwise the enclosing event handler retries and re-runs sends
+    // that already went out (duplicate email).
+    for (const s of steps) {
+        if (!s.job_id) continue;
+        try {
+            await removeDelayedJob(s.job_id);
+        } catch (err) {
+            Logger.warn('cancelRun: could not remove delayed job (will no-op at fire time)', {
+                run_id: run.id,
+                job_id: s.job_id,
+                error: err instanceof Error ? err.message : String(err),
+            });
+        }
+    }
     Logger.info('run canceled', { run_id: run.id, cause });
 }
 

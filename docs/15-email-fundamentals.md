@@ -118,7 +118,7 @@ Four steps, each a real defense:
 We hand-rolled this (≈70 lines, no dependency) to match the codebase's lean style; the security-critical pieces (cert-URL allowlist, canonical string) have unit tests in `tests/sns.test.ts`.
 
 ### The subscription handshake
-Before sending events, SNS sends a one-time `SubscriptionConfirmation` containing a `SubscribeURL`. The endpoint must GET that URL to activate the subscription (`confirmSubscription`). Optionally, `SES_SNS_TOPIC_ARN` pins the endpoint to a single topic so it won't confirm subscriptions from unexpected topics.
+Before sending events, SNS sends a one-time `SubscriptionConfirmation` containing a `SubscribeURL`. The endpoint must GET that URL to activate the subscription (`confirmSubscription`). `SES_SNS_TOPIC_ARN` pins the endpoint to a single topic (required in production with SES) — a valid SNS signature only proves *some* AWS account signed the message, so without the ARN pin a third party could subscribe the public endpoint to their own topic and forge suppressions.
 
 ### From event to suppression (`parseSesNotification` → `suppressForFeedback`)
 - Parse the inner SES event (`SnsMessage.Message` is itself a JSON string). Map **`Bounce` + `bounceType: Permanent` → `hard_bounce`** and **`Complaint` → `complaint`**; ignore transient bounces and deliveries.

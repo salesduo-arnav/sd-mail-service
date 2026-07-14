@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { asyncHandler, badRequest, notFound } from '../../utils/errors';
+import sequelize from '../../config/db';
 import { Workflow } from '../../models/workflow';
 import { WorkflowVersion } from '../../models/workflow_version';
 import { Step } from '../../types/workflow';
@@ -41,21 +42,28 @@ export const createWorkflow = asyncHandler(async (req: Request, res: Response) =
     const parsed = createSchema.safeParse(req.body);
     if (!parsed.success) throw badRequest('Invalid workflow', 'validation_error', parsed.error.flatten());
     const d = parsed.data;
-    const workflow = await Workflow.create({
-        product_id: d.product_id,
-        key: d.key,
-        name: d.name,
-        trigger_event_key: d.trigger_event_key,
-        category: d.category,
-        audience: d.audience,
+    // Atomic: workflow + its v1 + the active pointer must all commit together, else a
+    // mid-sequence failure leaves an enabled workflow with no active version (the engine
+    // would keep matching a workflow it can't load steps for).
+    const { workflow, version } = await sequelize.transaction(async (tx) => {
+        const workflow = await Workflow.create(
+            {
+                product_id: d.product_id,
+                key: d.key,
+                name: d.name,
+                trigger_event_key: d.trigger_event_key,
+                category: d.category,
+                audience: d.audience,
+            },
+            { transaction: tx },
+        );
+        const version = await WorkflowVersion.create(
+            { workflow_id: workflow.id, version: 1, steps: d.steps, created_by: req.admin?.admin_id ?? null },
+            { transaction: tx },
+        );
+        await workflow.update({ active_version_id: version.id }, { transaction: tx });
+        return { workflow, version };
     });
-    const version = await WorkflowVersion.create({
-        workflow_id: workflow.id,
-        version: 1,
-        steps: d.steps,
-        created_by: req.admin?.admin_id ?? null,
-    });
-    await workflow.update({ active_version_id: version.id });
     res.status(201).json({ workflow, active_version: version });
 });
 

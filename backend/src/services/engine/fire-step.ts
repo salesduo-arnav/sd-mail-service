@@ -7,6 +7,7 @@ import { Product } from '../../models/product';
 import { Subscriber } from '../../models/subscriber';
 import { EventLog } from '../../models/event_log';
 import { SendStep } from '../../types/workflow';
+import { withLock } from '../../config/redis';
 import { performSend, startRun, hasRepeat } from './run-executor';
 import Logger from '../../utils/logger';
 
@@ -24,16 +25,29 @@ import Logger from '../../utils/logger';
 export async function fireRunStep(runStepId: string): Promise<void> {
     const rs = await RunStep.findByPk(runStepId);
     if (!rs) return;
+    const owner = await WorkflowRun.findByPk(rs.run_id);
+    if (!owner) return;
 
+    // Serialize with event processing for this subscriber (process-event uses the same
+    // lock). Otherwise the re-arm below can race a concurrent cancel/match and leave two
+    // active runs for the same (workflow, subscriber).
+    await withLock(`sdmail:lock:sub:${owner.subscriber_id}`, () => fireRunStepLocked(rs));
+}
+
+async function fireRunStepLocked(rs: RunStep): Promise<void> {
     const run = await WorkflowRun.findByPk(rs.run_id);
     if (!run || run.status !== 'active') {
-        Logger.info('fireRunStep: run not active — no-op', { runStepId, status: run?.status });
+        Logger.info('fireRunStep: run not active — no-op', { runStepId: rs.id, status: run?.status });
         return;
     }
 
     const workflow = await Workflow.findByPk(run.workflow_id);
     if (!workflow || !workflow.enabled) {
-        Logger.info('fireRunStep: workflow disabled — no-op', { runStepId, workflow_id: run.workflow_id });
+        // Disabling a workflow mid-run must stop the run, not leave it 'active' forever:
+        // a stuck active run leaks and also blocks future legitimate runs via keep-first
+        // dedup. The delayed job is already consumed, so just finalize the run.
+        await run.update({ status: 'canceled', completed_at: new Date() });
+        Logger.info('fireRunStep: workflow disabled — run canceled', { runStepId: rs.id, workflow_id: run.workflow_id });
         return;
     }
 
@@ -41,7 +55,7 @@ export async function fireRunStep(runStepId: string): Promise<void> {
     const steps = version?.steps ?? [];
     const step = steps[rs.step_index];
     if (!step || step.type !== 'send') {
-        Logger.error('fireRunStep: step is not a send', { runStepId, step_index: rs.step_index });
+        Logger.error('fireRunStep: step is not a send', { runStepId: rs.id, step_index: rs.step_index });
         await rs.update({ executed_at: new Date() });
         return;
     }

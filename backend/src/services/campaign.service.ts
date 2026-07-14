@@ -19,7 +19,22 @@ export async function dispatchCampaign(campaignId: string): Promise<void> {
     if (!campaign) return;
     if (campaign.status === 'sent' || campaign.status === 'failed') return;
 
-    let total = 0;
+    // Fail fast if there's nothing to render (e.g. the chosen template was deleted) —
+    // otherwise every recipient job would skip with no message row and the campaign would
+    // hang in 'sending' forever (finalize waits for processed >= total_recipients).
+    if (!(await contentFor(campaign))) {
+        await campaign.update({ status: 'failed', completed_at: new Date() });
+        Logger.error('campaign has no template/content — marked failed', { campaign: campaignId });
+        return;
+    }
+
+    // Set total_recipients up front (before enqueuing) so a fast worker's skip-decrement
+    // can't be clobbered by a later total write.
+    const total = await Subscriber.count({
+        where: { product_id: campaign.product_id, email: { [Op.ne]: null } },
+    });
+    await campaign.update({ status: 'sending', total_recipients: total });
+
     let offset = 0;
     for (;;) {
         const subs = await Subscriber.findAll({
@@ -31,13 +46,18 @@ export async function dispatchCampaign(campaignId: string): Promise<void> {
         });
         if (!subs.length) break;
         for (const s of subs) await enqueueCampaignSend(campaign.id, s.id);
-        total += subs.length;
         offset += subs.length;
         if (subs.length < PAGE) break;
     }
 
-    await campaign.update({ status: 'sending', total_recipients: total });
     Logger.info('campaign dispatched', { campaign: campaign.id, recipients: total });
+}
+
+/** A recipient that can't produce a message (deleted subscriber / no email / no content)
+ *  must not leave the campaign hanging — drop it from the expected total so finalize can
+ *  still complete. Atomic + best-effort. */
+async function dropRecipient(campaignId: string): Promise<void> {
+    await Campaign.decrement('total_recipients', { where: { id: campaignId } }).catch(() => undefined);
 }
 
 async function contentFor(campaign: Campaign): Promise<MessageContent | null> {
@@ -66,11 +86,15 @@ export async function sendCampaignToSubscriber(
         Product.findByPk(campaign.product_id),
         Subscriber.findByPk(subscriberId),
     ]);
-    if (!product || !subscriber || !subscriber.email) return;
+    if (!product || !subscriber || !subscriber.email) {
+        await dropRecipient(campaignId);
+        return;
+    }
 
     const content = await contentFor(campaign);
     if (!content) {
         Logger.error('campaign has no template/content — skipping recipient', { campaign: campaignId });
+        await dropRecipient(campaignId);
         return;
     }
 
