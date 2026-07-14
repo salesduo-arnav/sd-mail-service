@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { EventLog } from '../models/event_log';
 import { Subscriber } from '../models/subscriber';
 import { enqueueEvent } from '../queues';
+import { normalizeEmail } from '../utils/email';
 import Logger from '../utils/logger';
 
 export interface SubscriberInput {
@@ -51,6 +52,7 @@ export async function upsertSubscriber(
     opts: { bumpLastSeen?: boolean } = {},
 ): Promise<Subscriber> {
     const now = new Date();
+    const email = input.email != null ? normalizeEmail(input.email) : null;
 
     // findOrCreate avoids the read-then-create race: two concurrent first-touch
     // events for the same (product, external_id) can't both insert (the unique
@@ -60,7 +62,7 @@ export async function upsertSubscriber(
         defaults: {
             product_id: productId,
             external_id: input.external_id,
-            email: input.email ?? null,
+            email,
             name: input.name ?? null,
             attributes: input.attributes ?? {},
             timezone: input.timezone ?? null,
@@ -70,7 +72,7 @@ export async function upsertSubscriber(
     if (created) return subscriber;
 
     const patch: Partial<Subscriber> = {};
-    if (input.email != null) patch.email = input.email;
+    if (email != null) patch.email = email;
     if (input.name != null) patch.name = input.name;
     if (input.timezone != null) patch.timezone = input.timezone;
     if (input.attributes && Object.keys(input.attributes).length) {

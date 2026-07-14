@@ -8,6 +8,7 @@ import { Subscriber } from '../../models/subscriber';
 import { EventLog } from '../../models/event_log';
 import { SendStep } from '../../types/workflow';
 import { withLock } from '../../config/redis';
+import { resolveFireAt, msUntil } from '../../utils/duration';
 import { performSend, startRun, hasRepeat } from './run-executor';
 import Logger from '../../utils/logger';
 
@@ -82,6 +83,21 @@ async function fireRunStepLocked(rs: RunStep): Promise<void> {
 
     // Re-arm recurring workflows (e.g. inactive_14d) for the next window; else complete.
     if (hasRepeat(steps) && version) {
+        // Loop guard: if the delay resolves to "now" (e.g. an `until:` field that's
+        // missing/past, or a 0-length delay), re-arming would fire again immediately and
+        // blast mail in a tight loop. Only re-arm when the next fire is genuinely in the
+        // future; otherwise complete and warn.
+        const delayStep = steps.find((s) => s.type === 'delay');
+        const nextFire =
+            delayStep && delayStep.type === 'delay' ? resolveFireAt(delayStep.duration, new Date(), data) : new Date();
+        if (msUntil(nextFire) <= 0) {
+            Logger.warn('fireRunStep: repeat delay resolves to immediate — not re-arming (would loop)', {
+                workflow: workflow.key,
+                subscriber_id: subscriber.id,
+            });
+            await run.update({ status: 'completed', completed_at: new Date() });
+            return;
+        }
         // Idempotent re-arm: only arm if no other active run for this (workflow,
         // subscriber) already exists — so a retry after a successful re-arm won't
         // create a duplicate armed run.

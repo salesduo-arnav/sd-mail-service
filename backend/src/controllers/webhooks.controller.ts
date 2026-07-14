@@ -6,6 +6,7 @@ import env from '../config/env';
 import { Product } from '../models/product';
 import { Message } from '../models/message';
 import { addSuppression } from '../services/suppression.service';
+import { normalizeEmail } from '../utils/email';
 import {
     SnsMessage,
     verifySnsSignature,
@@ -27,7 +28,7 @@ async function markRecentMessages(productId: string, email: string, reason: Supp
         {
             where: {
                 product_id: productId,
-                to_email: email,
+                to_email: normalizeEmail(email),
                 status: { [Op.in]: ['sent', 'delivered'] },
                 created_at: { [Op.gte]: since },
             },
@@ -70,7 +71,8 @@ async function suppressForFeedback(feedback: SesFeedback): Promise<void> {
         ? await Message.findOne({ where: { provider_message_id: { [Op.like]: `%${feedback.messageId}%` } } })
         : null;
 
-    for (const email of feedback.emails) {
+    for (const rawEmail of feedback.emails) {
+        const email = normalizeEmail(rawEmail);
         const productIds = new Set<string>();
         // Prefer the originating product (matched by SES message id) so a complaint about
         // one product's mail doesn't suppress unrelated products. Only when we can't tie

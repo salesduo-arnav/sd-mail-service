@@ -1,5 +1,6 @@
 import { Suppression } from '../models/suppression';
 import { MessageType, SuppressionReason } from '../types/workflow';
+import { normalizeEmail } from '../utils/email';
 import Logger from '../utils/logger';
 
 /** Reasons that block marketing mail (everything). Transactional honors only hard_bounce. */
@@ -20,7 +21,7 @@ export async function checkSuppression(
     email: string,
     type: MessageType,
 ): Promise<SuppressionCheck> {
-    const rows = await Suppression.findAll({ where: { product_id: productId, email } });
+    const rows = await Suppression.findAll({ where: { product_id: productId, email: normalizeEmail(email) } });
     if (!rows.length) return { blocked: false };
 
     for (const row of rows) {
@@ -36,11 +37,12 @@ export async function addSuppression(
     email: string,
     reason: SuppressionReason,
 ): Promise<void> {
+    const normalized = normalizeEmail(email);
     await Suppression.findOrCreate({
-        where: { product_id: productId, email, reason },
-        defaults: { product_id: productId, email, reason },
+        where: { product_id: productId, email: normalized, reason },
+        defaults: { product_id: productId, email: normalized, reason },
     });
-    Logger.info('suppression added', { product_id: productId, email, reason });
+    Logger.info('suppression added', { product_id: productId, email: normalized, reason });
 }
 
 export async function removeSuppression(
@@ -48,7 +50,7 @@ export async function removeSuppression(
     email: string,
     reason?: SuppressionReason,
 ): Promise<number> {
-    const where: Record<string, unknown> = { product_id: productId, email };
+    const where: Record<string, unknown> = { product_id: productId, email: normalizeEmail(email) };
     if (reason) where.reason = reason;
     return Suppression.destroy({ where });
 }

@@ -8,6 +8,7 @@ import { emailDriver } from './email-driver';
 import { checkSuppression } from '../suppression.service';
 import { isOptedOut } from '../preference.service';
 import { unsubscribeUrl } from '../unsubscribe-token';
+import { normalizeEmail } from '../../utils/email';
 import Logger from '../../utils/logger';
 
 /** The renderable content of a message — from a saved template or composed inline. */
@@ -62,7 +63,9 @@ export interface SendResult {
 export async function deliver(input: DeliverInput): Promise<SendResult> {
     const { product, content, subscriber, runId, runStepId, campaignId } = input;
     const type = content.type;
-    const toEmail = input.toEmail ?? subscriber?.email ?? null;
+    const rawTo = input.toEmail ?? subscriber?.email ?? null;
+    // Normalize so the logged recipient + suppression checks are case-consistent.
+    const toEmail = rawTo ? normalizeEmail(rawTo) : null;
 
     const baseDefaults = {
         product_id: product.id,
@@ -153,7 +156,12 @@ export async function deliver(input: DeliverInput): Promise<SendResult> {
             replyTo: input.replyTo ?? product.reply_to_email ?? undefined,
             subject: rendered.subject,
             html: rendered.html,
-            headers: unsub ? { 'List-Unsubscribe': `<${unsub}>` } : undefined,
+            // RFC 8058: List-Unsubscribe-Post lets a mail client one-click unsubscribe by
+            // POSTing to the URL (handled by POST /u/:token) — no GET that a link scanner
+            // could trip to unsubscribe a user unintentionally.
+            headers: unsub
+                ? { 'List-Unsubscribe': `<${unsub}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' }
+                : undefined,
         });
     } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
