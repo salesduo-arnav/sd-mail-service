@@ -275,10 +275,13 @@ export const CATALOG: ProductDef[] = [
             },
             {
                 key: 'abandoned_checkout_1d',
-                name: 'Abandoned checkout after 1 day (Phase 2)',
+                name: 'Abandoned checkout after 1 day',
+                // core emits `checkout.initiated` when a plan Checkout Session is created and
+                // `checkout.completed` from the checkout-completed webhook — so this arms +1d
+                // on initiate and cancels if the checkout completes in time.
                 trigger_event_key: 'checkout.initiated',
                 category: 'billing',
-                enabled: false, // Phase 2 — core doesn't emit checkout.* yet
+                enabled: true,
                 steps: [
                     { type: 'delay', duration: '1d' },
                     { type: 'cancel_on', event_keys: ['checkout.completed'] },
