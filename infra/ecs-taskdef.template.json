@@ -19,6 +19,7 @@
         { "name": "PORT", "value": "3000" },
         { "name": "EMAIL_TRANSPORT", "value": "ses" },
         { "name": "SES_REGION", "value": "<AWS_REGION>" },
+        { "name": "SES_SNS_TOPIC_ARN", "value": "arn:aws:sns:<AWS_REGION>:<AWS_ACCOUNT_ID>:ses-feedback" },
         { "name": "PUBLIC_URL", "value": "https://<MAIL_HOST>" },
         { "name": "CORS_ORIGINS", "value": "https://<ADMIN_HOST>" },
         { "name": "SERVE_ADMIN", "value": "true" }
@@ -31,7 +32,6 @@
         { "name": "PGDATABASE", "valueFrom": "<SSM_OR_SECRET_ARN>/PGDATABASE" },
         { "name": "REDIS_URL", "valueFrom": "<SSM_OR_SECRET_ARN>/REDIS_URL" },
         { "name": "ADMIN_SESSION_SECRET", "valueFrom": "<SSM_OR_SECRET_ARN>/ADMIN_SESSION_SECRET" },
-        { "name": "HMAC_SECRET", "valueFrom": "<SSM_OR_SECRET_ARN>/HMAC_SECRET" },
         { "name": "UNSUB_SECRET", "valueFrom": "<SSM_OR_SECRET_ARN>/UNSUB_SECRET" },
         { "name": "INTERNAL_API_KEY", "valueFrom": "<SSM_OR_SECRET_ARN>/INTERNAL_API_KEY" },
         { "name": "ADMIN_EMAIL", "valueFrom": "<SSM_OR_SECRET_ARN>/ADMIN_EMAIL" },
